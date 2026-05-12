@@ -1,0 +1,253 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  background:
+    radial-gradient(circle at top, rgba(38, 88, 136, 0.28), transparent 38%),
+    linear-gradient(180deg, #0d1520 0%, #070b11 100%);
+  color: #edf2f7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: transparent;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.panel {
+  width: min(920px, 100%);
+  padding: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 24px;
+  background: rgba(8, 13, 20, 0.86);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(20px);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #8fb7ff;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+}
+
+h1,
+h2,
+p,
+ul {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2.4rem, 4vw, 3.8rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+h2 {
+  font-size: 1rem;
+  color: #f8fafc;
+}
+
+.status-badge {
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-live {
+  color: #d1fae5;
+  background: rgba(16, 185, 129, 0.22);
+}
+
+.status-idle {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.privacy-note,
+.status-message,
+.error-message {
+  margin-top: 16px;
+}
+
+.privacy-note {
+  color: #bfdbfe;
+}
+
+.status-message {
+  color: #dbeafe;
+}
+
+.error-message {
+  padding: 12px 14px;
+  border-radius: 14px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.4);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.primary-button,
+.secondary-button {
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 18px;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease,
+    background-color 160ms ease;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #7dd3fc 0%, #3b82f6 100%);
+  color: #08111b;
+  font-weight: 800;
+}
+
+.secondary-button {
+  background: rgba(30, 41, 59, 0.85);
+  color: #e2e8f0;
+}
+
+.primary-button:hover,
+.secondary-button:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.visualizer {
+  display: grid;
+  grid-template-columns: repeat(40, minmax(0, 1fr));
+  align-items: end;
+  gap: 6px;
+  height: 220px;
+  margin-top: 28px;
+  padding: 18px;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.88)),
+    repeating-linear-gradient(
+      to right,
+      rgba(148, 163, 184, 0.05) 0,
+      rgba(148, 163, 184, 0.05) 1px,
+      transparent 1px,
+      transparent calc(100% / 10)
+    );
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.bar-slot {
+  display: flex;
+  align-items: end;
+  height: 100%;
+}
+
+.bar-fill {
+  width: 100%;
+  min-height: 6px;
+  border-radius: 999px 999px 6px 6px;
+  background: linear-gradient(180deg, #93c5fd 0%, #2563eb 100%);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.28);
+}
+
+.peaks-panel {
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #94a3b8;
+  margin-bottom: 14px;
+}
+
+.peak-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.peak-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.76);
+  color: #e2e8f0;
+}
+
+.empty-state {
+  color: #94a3b8;
+}
+
+@media (max-width: 720px) {
+  .panel {
+    padding: 22px;
+  }
+
+  .panel-header,
+  .section-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .visualizer {
+    gap: 4px;
+    height: 180px;
+  }
+}

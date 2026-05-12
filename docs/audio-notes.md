@@ -1,0 +1,4 @@
+- 60Hz appears constantly near my PC
+- HVAC produces strong low-frequency band
+- Voice occupies much wider spectrum than expected
+- FFT bins become more stable with larger fftSize
