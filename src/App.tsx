@@ -5,6 +5,30 @@ type FrequencyPeak = {
   magnitude: number;
 };
 
+type HumStatus = 'No stable hum' | 'Possible hum' | 'Likely persistent hum';
+
+type HumCandidate = {
+  frequencyHz: number | null;
+  confidencePercent: number;
+  status: HumStatus;
+  nearestMainsBandHz: number | null;
+};
+
+type MainsBandReading = {
+  frequencyHz: number;
+  intensity: number;
+  highlighted: boolean;
+};
+
+type PersistenceState = {
+  smoothedBins: number[];
+  historyFrames: number[][];
+  historySums: number[];
+  frameIndex: number;
+  sampleCount: number;
+  lastSampleTimeMs: number;
+};
+
 type AudioResources = {
   audioContext: AudioContext;
   analyser: AnalyserNode;
@@ -16,6 +40,43 @@ const FFT_SIZE = 4096;
 const MAX_DISPLAY_FREQUENCY = 300;
 const PEAK_COUNT = 5;
 const BAR_COUNT = 40;
+const SMOOTHING_DECAY = 0.82;
+const PERSISTENCE_SAMPLE_INTERVAL_MS = 120;
+const PERSISTENCE_WINDOW_SAMPLES = 32;
+const MIN_CANDIDATE_MAGNITUDE = 24;
+const MAINS_HUM_BANDS = [50, 60, 100, 120, 150, 180, 240] as const;
+
+const emptyCandidate: HumCandidate = {
+  frequencyHz: null,
+  confidencePercent: 0,
+  status: 'No stable hum',
+  nearestMainsBandHz: null,
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function findNearestMainsBand(frequencyHz: number) {
+  return MAINS_HUM_BANDS.reduce((nearest, bandHz) => {
+    const nearestDistance = Math.abs(nearest - frequencyHz);
+    const bandDistance = Math.abs(bandHz - frequencyHz);
+
+    return bandDistance < nearestDistance ? bandHz : nearest;
+  });
+}
+
+function classifyHumCandidate(confidencePercent: number): HumStatus {
+  if (confidencePercent >= 68) {
+    return 'Likely persistent hum';
+  }
+
+  if (confidencePercent >= 38) {
+    return 'Possible hum';
+  }
+
+  return 'No stable hum';
+}
 
 function App() {
   const [isListening, setIsListening] = useState(false);
@@ -25,7 +86,16 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [peaks, setPeaks] = useState<FrequencyPeak[]>([]);
   const [bars, setBars] = useState<number[]>(() => Array.from({ length: BAR_COUNT }, () => 0));
+  const [humCandidate, setHumCandidate] = useState<HumCandidate>(emptyCandidate);
+  const [mainsBands, setMainsBands] = useState<MainsBandReading[]>(
+    MAINS_HUM_BANDS.map((frequencyHz) => ({
+      frequencyHz,
+      intensity: 0,
+      highlighted: false,
+    })),
+  );
   const audioRef = useRef<AudioResources | null>(null);
+  const persistenceRef = useRef<PersistenceState | null>(null);
 
   useEffect(() => {
     return () => {
@@ -33,12 +103,27 @@ function App() {
     };
   }, []);
 
+  const resetAnalysisState = () => {
+    persistenceRef.current = null;
+    setPeaks([]);
+    setBars(Array.from({ length: BAR_COUNT }, () => 0));
+    setHumCandidate(emptyCandidate);
+    setMainsBands(
+      MAINS_HUM_BANDS.map((frequencyHz) => ({
+        frequencyHz,
+        intensity: 0,
+        highlighted: false,
+      })),
+    );
+  };
+
   const stopListening = async () => {
     const audio = audioRef.current;
 
     if (!audio) {
       setIsListening(false);
       setStatusMessage('Microphone is inactive. Start listening to begin local analysis.');
+      resetAnalysisState();
       return;
     }
 
@@ -49,8 +134,7 @@ function App() {
     audio.stream.getTracks().forEach((track) => track.stop());
     audioRef.current = null;
     setIsListening(false);
-    setPeaks([]);
-    setBars(Array.from({ length: BAR_COUNT }, () => 0));
+    resetAnalysisState();
     setStatusMessage('Microphone is inactive. Audio capture has been fully released.');
 
     await audio.audioContext.close();
@@ -76,10 +160,27 @@ function App() {
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = FFT_SIZE;
-      analyser.smoothingTimeConstant = 0.8;
+      analyser.smoothingTimeConstant = 0.65;
       source.connect(analyser);
 
       const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+      const binWidth = audioContext.sampleRate / analyser.fftSize;
+      const maxBin = Math.min(
+        frequencyData.length - 1,
+        Math.floor(MAX_DISPLAY_FREQUENCY / binWidth),
+      );
+
+      persistenceRef.current = {
+        smoothedBins: Array.from({ length: maxBin + 1 }, () => 0),
+        historyFrames: Array.from({ length: PERSISTENCE_WINDOW_SAMPLES }, () =>
+          Array.from({ length: maxBin + 1 }, () => 0),
+        ),
+        historySums: Array.from({ length: maxBin + 1 }, () => 0),
+        frameIndex: 0,
+        sampleCount: 0,
+        lastSampleTimeMs: 0,
+      };
+
       const resources: AudioResources = {
         audioContext,
         analyser,
@@ -88,19 +189,22 @@ function App() {
       };
       audioRef.current = resources;
 
-      const updateAnalysis = () => {
-        if (!audioRef.current) {
+      const updateAnalysis = (timestampMs: number) => {
+        if (!audioRef.current || !persistenceRef.current) {
           return;
         }
 
         analyser.getByteFrequencyData(frequencyData);
+        const persistence = persistenceRef.current;
 
-        const sampleRate = audioContext.sampleRate;
-        const binWidth = sampleRate / analyser.fftSize;
-        const maxBin = Math.min(
-          frequencyData.length - 1,
-          Math.floor(MAX_DISPLAY_FREQUENCY / binWidth),
-        );
+        // Apply a small rolling average per FFT bin so the live graph and peak list
+        // react quickly without snapping to every short-lived fluctuation.
+        for (let binIndex = 0; binIndex <= maxBin; binIndex += 1) {
+          const rawMagnitude = frequencyData[binIndex] ?? 0;
+          const previousMagnitude = persistence.smoothedBins[binIndex] ?? 0;
+          persistence.smoothedBins[binIndex] =
+            previousMagnitude * SMOOTHING_DECAY + rawMagnitude * (1 - SMOOTHING_DECAY);
+        }
 
         const peakCandidates: FrequencyPeak[] = [];
         const nextBars = Array.from({ length: BAR_COUNT }, (_, barIndex) => {
@@ -112,10 +216,8 @@ function App() {
 
           let highestMagnitude = 0;
 
-          // Scan the low-frequency FFT bins once and reuse those values for both the
-          // peak list and the coarse bar chart so the UI stays in sync.
           for (let binIndex = startBin; binIndex <= endBin; binIndex += 1) {
-            const magnitude = frequencyData[binIndex] ?? 0;
+            const magnitude = persistence.smoothedBins[binIndex] ?? 0;
 
             if (magnitude > highestMagnitude) {
               highestMagnitude = magnitude;
@@ -124,8 +226,8 @@ function App() {
             if (
               binIndex > 0 &&
               binIndex < maxBin &&
-              magnitude > (frequencyData[binIndex - 1] ?? 0) &&
-              magnitude >= (frequencyData[binIndex + 1] ?? 0)
+              magnitude > (persistence.smoothedBins[binIndex - 1] ?? 0) &&
+              magnitude >= (persistence.smoothedBins[binIndex + 1] ?? 0)
             ) {
               peakCandidates.push({
                 frequencyHz: binIndex * binWidth,
@@ -140,6 +242,115 @@ function App() {
         peakCandidates.sort((left, right) => right.magnitude - left.magnitude);
         setPeaks(peakCandidates.slice(0, PEAK_COUNT));
         setBars(nextBars);
+
+        if (
+          timestampMs - persistence.lastSampleTimeMs >= PERSISTENCE_SAMPLE_INTERVAL_MS &&
+          persistence.sampleCount <= PERSISTENCE_WINDOW_SAMPLES
+        ) {
+          const historyFrame = persistence.historyFrames[persistence.frameIndex];
+
+          if (!historyFrame) {
+            resources.animationFrameId = requestAnimationFrame(updateAnalysis);
+            return;
+          }
+
+          // Keep a short rolling window of already-smoothed FFT snapshots. The
+          // candidate panel uses the running sums from this window to estimate
+          // whether one band is sticking around for several seconds.
+          for (let binIndex = 0; binIndex <= maxBin; binIndex += 1) {
+            const sampleMagnitude = persistence.smoothedBins[binIndex] ?? 0;
+            const previousFrameValue = historyFrame[binIndex] ?? 0;
+            const previousSum = persistence.historySums[binIndex] ?? 0;
+            persistence.historySums[binIndex] = previousSum + sampleMagnitude - previousFrameValue;
+            historyFrame[binIndex] = sampleMagnitude;
+          }
+
+          persistence.frameIndex =
+            (persistence.frameIndex + 1) % PERSISTENCE_WINDOW_SAMPLES;
+          persistence.sampleCount = Math.min(
+            persistence.sampleCount + 1,
+            PERSISTENCE_WINDOW_SAMPLES,
+          );
+          persistence.lastSampleTimeMs = timestampMs;
+
+          const warmupRatio = persistence.sampleCount / PERSISTENCE_WINDOW_SAMPLES;
+          let strongestPersistentBin = 0;
+          let strongestScore = 0;
+
+          for (let binIndex = 1; binIndex <= maxBin; binIndex += 1) {
+            const averageMagnitude =
+              (persistence.historySums[binIndex] ?? 0) / persistence.sampleCount;
+
+            if (averageMagnitude < MIN_CANDIDATE_MAGNITUDE) {
+              continue;
+            }
+
+            let meanAbsoluteDeviation = 0;
+
+            for (let sampleIndex = 0; sampleIndex < persistence.sampleCount; sampleIndex += 1) {
+              meanAbsoluteDeviation += Math.abs(
+                (persistence.historyFrames[sampleIndex]?.[binIndex] ?? 0) - averageMagnitude,
+              );
+            }
+
+            meanAbsoluteDeviation /= persistence.sampleCount;
+
+            const stability = clamp(
+              1 - meanAbsoluteDeviation / Math.max(averageMagnitude, 1),
+              0,
+              1,
+            );
+            const strength = clamp(averageMagnitude / 140, 0, 1);
+            const score = (strength * 0.65 + stability * 0.35) * warmupRatio;
+
+            if (score > strongestScore) {
+              strongestScore = score;
+              strongestPersistentBin = binIndex;
+            }
+          }
+
+          const confidencePercent = Math.round(clamp(strongestScore * 100, 0, 95));
+          const candidateFrequencyHz =
+            strongestPersistentBin > 0 ? strongestPersistentBin * binWidth : null;
+          const nearestMainsBandHz =
+            candidateFrequencyHz !== null
+              ? findNearestMainsBand(candidateFrequencyHz)
+              : null;
+
+          setHumCandidate({
+            frequencyHz: candidateFrequencyHz,
+            confidencePercent,
+            status: classifyHumCandidate(confidencePercent),
+            nearestMainsBandHz:
+              candidateFrequencyHz !== null &&
+              nearestMainsBandHz !== null &&
+              Math.abs(nearestMainsBandHz - candidateFrequencyHz) <= 6
+                ? nearestMainsBandHz
+                : null,
+          });
+
+          setMainsBands(
+            MAINS_HUM_BANDS.map((frequencyHz) => {
+              const centerBin = Math.round(frequencyHz / binWidth);
+              const averageMagnitude =
+                ((persistence.historySums[centerBin - 1] ?? 0) +
+                  (persistence.historySums[centerBin] ?? 0) +
+                  (persistence.historySums[centerBin + 1] ?? 0)) /
+                (3 * persistence.sampleCount);
+              const intensity = Math.round(clamp((averageMagnitude / 110) * 100, 0, 100));
+
+              return {
+                frequencyHz,
+                intensity,
+                highlighted:
+                  intensity >= 28 ||
+                  (nearestMainsBandHz !== null &&
+                    Math.abs(nearestMainsBandHz - frequencyHz) <= 0.1 &&
+                    confidencePercent >= 38),
+              };
+            }),
+          );
+        }
 
         resources.animationFrameId = requestAnimationFrame(updateAnalysis);
       };
@@ -200,10 +411,58 @@ function App() {
           </button>
         </div>
 
+        <section className="candidate-panel">
+          <div className="section-heading">
+            <h2>Hum Candidate</h2>
+            <span>Rolling 3.8 second view</span>
+          </div>
+
+          <div className="candidate-grid">
+            <div className="candidate-card">
+              <span className="candidate-label">Strongest persistent frequency</span>
+              <strong>
+                {humCandidate.frequencyHz !== null
+                  ? `${humCandidate.frequencyHz.toFixed(1)} Hz`
+                  : 'No clear candidate'}
+              </strong>
+            </div>
+
+            <div className="candidate-card">
+              <span className="candidate-label">Approximate confidence</span>
+              <strong>{humCandidate.confidencePercent}%</strong>
+            </div>
+
+            <div className="candidate-card">
+              <span className="candidate-label">Status</span>
+              <strong>{humCandidate.status}</strong>
+            </div>
+          </div>
+
+          <p className="candidate-note">
+            This panel shows a local hum candidate only. It is not a definitive diagnosis.
+          </p>
+
+          <div className="mains-band-row" aria-label="Common mains hum bands">
+            {mainsBands.map((band) => (
+              <span
+                key={band.frequencyHz}
+                className={`mains-chip ${band.highlighted ? 'mains-chip-active' : ''}`}
+                title={`Persistent intensity ${band.intensity}%`}
+              >
+                {band.frequencyHz} Hz
+                {humCandidate.nearestMainsBandHz === band.frequencyHz ? ' candidate' : ''}
+              </span>
+            ))}
+          </div>
+        </section>
+
         <section className="visualizer" aria-label="Low frequency visualization">
           {bars.map((magnitude, index) => (
             <div key={index} className="bar-slot">
-              <div className="bar-fill" style={{ height: `${Math.max(6, (magnitude / 255) * 100)}%` }} />
+              <div
+                className="bar-fill"
+                style={{ height: `${Math.max(6, (magnitude / 255) * 100)}%` }}
+              />
             </div>
           ))}
         </section>
@@ -211,7 +470,7 @@ function App() {
         <section className="peaks-panel">
           <div className="section-heading">
             <h2>Top 5 Peaks Under 300 Hz</h2>
-            <span>Live FFT snapshot</span>
+            <span>Smoothed live FFT snapshot</span>
           </div>
 
           {peaks.length > 0 ? (
@@ -219,7 +478,7 @@ function App() {
               {peaks.map((peak) => (
                 <li key={`${peak.frequencyHz}-${peak.magnitude}`} className="peak-item">
                   <span>{peak.frequencyHz.toFixed(1)} Hz</span>
-                  <span>{peak.magnitude}</span>
+                  <span>{Math.round(peak.magnitude)}</span>
                 </li>
               ))}
             </ul>

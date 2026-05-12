@@ -184,6 +184,69 @@ h2 {
   border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
+.candidate-panel {
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(20, 29, 46, 0.72), rgba(11, 18, 31, 0.78));
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.candidate-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(30, 41, 59, 0.68);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.candidate-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.05rem;
+  color: #f8fafc;
+}
+
+.candidate-label {
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
+
+.candidate-note {
+  margin-top: 14px;
+  color: #cbd5e1;
+}
+
+.mains-band-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.mains-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #bfd3ea;
+  background: rgba(51, 65, 85, 0.68);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  font-size: 0.88rem;
+}
+
+.mains-chip-active {
+  color: #eff6ff;
+  background: rgba(37, 99, 235, 0.35);
+  border-color: rgba(125, 211, 252, 0.35);
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.18);
+}
+
 .bar-slot {
   display: flex;
   align-items: end;
@@ -249,5 +312,9 @@ h2 {
   .visualizer {
     gap: 4px;
     height: 180px;
+  }
+
+  .candidate-grid {
+    grid-template-columns: 1fr;
   }
 }
