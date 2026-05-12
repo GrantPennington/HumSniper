@@ -5,6 +5,8 @@ V1
 - Stable hum candidate panel
 - Debug analysis panel
 - Rumble filter toggle
+- Detection tuning controls
+- Presets for noisy rooms
 
 V2
 - Spectrogram

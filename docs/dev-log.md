@@ -70,3 +70,25 @@ Next goals:
 - compare neighboring harmonics more explicitly
 - add lightweight history for candidate stability over time
 - tune the rumble cutoff and confidence thresholds with more room samples
+
+### Slice 004 Complete
+
+Added user-facing detection tuning controls so noisy rooms can be interpreted more intentionally.
+
+Features:
+- detection settings panel
+- rumble cutoff slider
+- minimum persistence slider
+- minimum average strength slider
+- Sensitive, Balanced, and Strict presets
+- live control updates without restarting the microphone
+
+Key observations:
+- a slightly higher rumble cutoff helps audible hum stand out in vibration-heavy spaces
+- minimum persistence and minimum strength need to be tuned together
+- presets make the app more approachable than raw DSP-style controls alone
+
+Next goals:
+- group harmonics into hum families
+- add short candidate history so users can see drift
+- compare how presets behave across different rooms and devices

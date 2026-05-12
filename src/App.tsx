@@ -28,6 +28,12 @@ type MainsBandReading = {
   highlighted: boolean;
 };
 
+type DetectionSettings = {
+  rumbleCutoffHz: number;
+  minimumPersistencePercent: number;
+  minimumAverageStrength: number;
+};
+
 type PersistenceState = {
   smoothedBins: number[];
   historyFrames: number[][];
@@ -52,9 +58,25 @@ const BAR_COUNT = 40;
 const SMOOTHING_DECAY = 0.82;
 const PERSISTENCE_SAMPLE_INTERVAL_MS = 120;
 const PERSISTENCE_WINDOW_SAMPLES = 32;
-const MIN_CANDIDATE_MAGNITUDE = 24;
-const RUMBLE_CUTOFF_HZ = 20;
 const MAINS_HUM_BANDS = [50, 60, 100, 120, 150, 180, 240] as const;
+
+const DETECTION_PRESETS = {
+  Sensitive: {
+    rumbleCutoffHz: 12,
+    minimumPersistencePercent: 24,
+    minimumAverageStrength: 16,
+  },
+  Balanced: {
+    rumbleCutoffHz: 20,
+    minimumPersistencePercent: 38,
+    minimumAverageStrength: 24,
+  },
+  Strict: {
+    rumbleCutoffHz: 30,
+    minimumPersistencePercent: 56,
+    minimumAverageStrength: 36,
+  },
+} satisfies Record<string, DetectionSettings>;
 
 const emptyCandidate: HumCandidate = {
   frequencyHz: null,
@@ -105,7 +127,7 @@ function App() {
   const [bars, setBars] = useState<number[]>(() => Array.from({ length: BAR_COUNT }, () => 0));
   const [humCandidate, setHumCandidate] = useState<HumCandidate>(emptyCandidate);
   const [persistentCandidates, setPersistentCandidates] = useState<PersistentCandidate[]>([]);
-  const [ignoreSub20HzRumble, setIgnoreSub20HzRumble] = useState(true);
+  const [settings, setSettings] = useState<DetectionSettings>(DETECTION_PRESETS.Balanced);
   const [mainsBands, setMainsBands] = useState<MainsBandReading[]>(
     MAINS_HUM_BANDS.map((frequencyHz) => ({
       frequencyHz,
@@ -115,6 +137,11 @@ function App() {
   );
   const audioRef = useRef<AudioResources | null>(null);
   const persistenceRef = useRef<PersistenceState | null>(null);
+  const settingsRef = useRef<DetectionSettings>(DETECTION_PRESETS.Balanced);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   useEffect(() => {
     return () => {
@@ -158,6 +185,10 @@ function App() {
     setStatusMessage('Microphone is inactive. Audio capture has been fully released.');
 
     await audio.audioContext.close();
+  };
+
+  const applyPreset = (preset: DetectionSettings) => {
+    setSettings(preset);
   };
 
   const startListening = async () => {
@@ -217,8 +248,6 @@ function App() {
         analyser.getByteFrequencyData(frequencyData);
         const persistence = persistenceRef.current;
 
-        // Smooth each low-frequency FFT bin over time so short spikes do not
-        // dominate the live display or the persistence-based scoring.
         for (let binIndex = 0; binIndex <= maxBin; binIndex += 1) {
           const rawMagnitude = frequencyData[binIndex] ?? 0;
           const previousMagnitude = persistence.smoothedBins[binIndex] ?? 0;
@@ -271,9 +300,6 @@ function App() {
             return;
           }
 
-          // Keep a short rolling window of smoothed FFT snapshots in memory.
-          // The debug panel and main candidate both use these running averages
-          // rather than any saved raw microphone data.
           for (let binIndex = 0; binIndex <= maxBin; binIndex += 1) {
             const sampleMagnitude = persistence.smoothedBins[binIndex] ?? 0;
             const previousFrameValue = historyFrame[binIndex] ?? 0;
@@ -291,15 +317,12 @@ function App() {
           persistence.lastSampleTimeMs = timestampMs;
 
           const warmupRatio = persistence.sampleCount / PERSISTENCE_WINDOW_SAMPLES;
+          const activeSettings = settingsRef.current;
           const nextPersistentCandidates: PersistentCandidate[] = [];
 
           for (let binIndex = 1; binIndex <= maxBin; binIndex += 1) {
             const averageMagnitude =
               (persistence.historySums[binIndex] ?? 0) / persistence.sampleCount;
-
-            if (averageMagnitude < MIN_CANDIDATE_MAGNITUDE) {
-              continue;
-            }
 
             let meanAbsoluteDeviation = 0;
 
@@ -317,17 +340,29 @@ function App() {
               1,
             );
             const strength = clamp(averageMagnitude / 140, 0, 1);
-            const score = (strength * 0.65 + stability * 0.35) * warmupRatio;
-            const confidencePercent = Math.round(clamp(score * 100, 0, 95));
+            const confidencePercent = Math.round(
+              clamp((strength * 0.65 + stability * 0.35) * warmupRatio * 100, 0, 95),
+            );
             const frequencyHz = binIndex * binWidth;
             const nearestMainsBandHz = findNearestMainsBandWithinTolerance(frequencyHz, 6);
+
+            // These thresholds only gate which bins count as meaningful persistent
+            // candidates. Lower values make the detector more permissive; higher
+            // values require a tone to be stronger and more stable before selection.
+            const passesThresholds =
+              averageMagnitude >= activeSettings.minimumAverageStrength &&
+              confidencePercent >= activeSettings.minimumPersistencePercent;
+
+            if (!passesThresholds) {
+              continue;
+            }
 
             nextPersistentCandidates.push({
               frequencyHz,
               averageStrength: averageMagnitude,
               confidencePercent,
               nearestMainsBandHz,
-              excludedByRumbleFilter: ignoreSub20HzRumble && frequencyHz < RUMBLE_CUTOFF_HZ,
+              excludedByRumbleFilter: frequencyHz < activeSettings.rumbleCutoffHz,
             });
           }
 
@@ -373,7 +408,7 @@ function App() {
                   intensity >= 28 ||
                   (nearestMainsBandHz !== null &&
                     Math.abs(nearestMainsBandHz - frequencyHz) <= 0.1 &&
-                    confidencePercent >= 38),
+                    confidencePercent >= activeSettings.minimumPersistencePercent),
               };
             }),
           );
@@ -438,6 +473,87 @@ function App() {
           </button>
         </div>
 
+        <section className="settings-panel">
+          <div className="section-heading">
+            <h2>Detection Settings</h2>
+            <span>Updates live while listening</span>
+          </div>
+
+          <div className="preset-row">
+            {Object.entries(DETECTION_PRESETS).map(([presetName, presetSettings]) => (
+              <button
+                key={presetName}
+                type="button"
+                className="preset-button"
+                onClick={() => applyPreset(presetSettings)}
+              >
+                {presetName}
+              </button>
+            ))}
+          </div>
+
+          <div className="settings-grid">
+            <label className="setting-control">
+              <span>Rumble cutoff</span>
+              <strong>{settings.rumbleCutoffHz} Hz</strong>
+              <input
+                type="range"
+                min="10"
+                max="40"
+                step="1"
+                value={settings.rumbleCutoffHz}
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    rumbleCutoffHz: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+
+            <label className="setting-control">
+              <span>Minimum persistence</span>
+              <strong>{settings.minimumPersistencePercent}%</strong>
+              <input
+                type="range"
+                min="10"
+                max="80"
+                step="1"
+                value={settings.minimumPersistencePercent}
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    minimumPersistencePercent: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+
+            <label className="setting-control">
+              <span>Minimum average strength</span>
+              <strong>{settings.minimumAverageStrength.toFixed(0)}</strong>
+              <input
+                type="range"
+                min="8"
+                max="60"
+                step="1"
+                value={settings.minimumAverageStrength}
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    minimumAverageStrength: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+          </div>
+
+          <p className="settings-note">
+            Lower cutoff values allow more vibration and rumble to compete. Higher cutoff values
+            focus the main hum candidate on more audible low-frequency tones.
+          </p>
+        </section>
+
         <section className="candidate-panel">
           <div className="section-heading">
             <h2>Hum Candidate</h2>
@@ -489,17 +605,9 @@ function App() {
             <span>Why this candidate is being chosen</span>
           </div>
 
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={ignoreSub20HzRumble}
-              onChange={(event) => setIgnoreSub20HzRumble(event.target.checked)}
-            />
-            <span>Ignore sub-20Hz rumble for main hum candidate</span>
-          </label>
-
           <p className="analysis-note">
-            Sub-20Hz activity may reflect vibration or structural rumble rather than audible hum.
+            Frequencies below {settings.rumbleCutoffHz} Hz can still appear here, but they will not
+            become the main hum candidate.
           </p>
 
           {persistentCandidates.length > 0 ? (
@@ -515,7 +623,7 @@ function App() {
                     ) : null}
                     {candidate.excludedByRumbleFilter ? (
                       <span className="analysis-tag analysis-tag-muted">
-                        excluded from main candidate
+                        below cutoff
                       </span>
                     ) : null}
                   </div>
