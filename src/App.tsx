@@ -23,6 +23,9 @@ import {
   deriveStabilityState,
   samplePersistenceFrame,
 } from './audio/persistence';
+import AnalysisView from './components/AnalysisView';
+import MonitorView from './components/MonitorView';
+import SettingsView from './components/SettingsView';
 import type {
   AppView,
   AudioResources,
@@ -277,348 +280,52 @@ function App() {
         </nav>
 
         {activeView === 'monitor' ? (
-          <div className="view-stack">
-            <section className="monitor-hero">
-              <div className="monitor-copy">
-                <h2>Live Monitor</h2>
-                <p className="monitor-note">
-                  Start listening to watch the strongest persistent low-frequency candidate update
-                  in real time.
-                </p>
-              </div>
-
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => void startListening()}
-                  disabled={isListening}
-                >
-                  Start Listening
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => void stopListening()}
-                  disabled={!isListening && !audioRef.current}
-                >
-                  Stop Listening
-                </button>
-              </div>
-            </section>
-
-            <section className="candidate-panel">
-              <div className="section-heading">
-                <h2>Hum Candidate</h2>
-                <span>Rolling 3.8 second view</span>
-              </div>
-
-              <div className="candidate-grid">
-                <div className="candidate-card candidate-card-primary">
-                  <span className="candidate-label">Strongest persistent frequency</span>
-                  <strong>
-                    {humCandidate.frequencyHz !== null
-                      ? `${humCandidate.frequencyHz.toFixed(1)} Hz`
-                      : 'No clear candidate'}
-                  </strong>
-                </div>
-
-                <div className="candidate-card">
-                  <span className="candidate-label">Approximate confidence</span>
-                  <strong>{humCandidate.confidencePercent}%</strong>
-                </div>
-
-                <div className="candidate-card">
-                  <span className="candidate-label">Status</span>
-                  <strong>{humCandidate.status}</strong>
-                </div>
-              </div>
-
-              <p className="candidate-note">
-                This is a local candidate only. It helps you investigate recurring hum, not
-                diagnose it with certainty.
-              </p>
-
-              <div className="mains-band-row" aria-label="Common mains hum bands">
-                {mainsBands.map((band) => (
-                  <span
-                    key={band.frequencyHz}
-                    className={`mains-chip ${band.highlighted ? 'mains-chip-active' : ''}`}
-                    title={`Persistent intensity ${band.intensity}%`}
-                  >
-                    {band.frequencyHz} Hz
-                    {humCandidate.nearestMainsBandHz === band.frequencyHz ? ' candidate' : ''}
-                  </span>
-                ))}
-              </div>
-            </section>
-
-            <section className="family-panel">
-              <div className="section-heading">
-                <h2>Hum Families</h2>
-                <span>Grouped harmonic patterns under 300 Hz</span>
-              </div>
-
-              <p className="family-note">
-                Matched bands are possible family hints only. A recurring source can create energy
-                at multiples of a base frequency, which is why 50 Hz or 60 Hz patterns often show
-                up in related bands.
-              </p>
-
-              {humFamilies.length > 0 ? (
-                <ul className="family-list">
-                  {humFamilies.map((family) => (
-                    <li key={family.baseFrequencyHz} className="family-item">
-                      <div>
-                        <strong>{family.label}</strong>
-                        <p className="family-explanation">{family.explanation}</p>
-                      </div>
-                      <span>matched bands {family.matchedBandsHz.join(', ')} Hz</span>
-                      <span>combined score {family.combinedScore}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="empty-state">
-                  No clear 50 Hz or 60 Hz family matches are visible right now.
-                </p>
-              )}
-            </section>
-
-            <section className="history-panel">
-              <div className="section-heading">
-                <h2>Stability</h2>
-                <span>Recent candidate history</span>
-              </div>
-
-              <div className="history-summary">
-                <strong>{stabilityState}</strong>
-                <span>
-                  A persistent hum should appear as a steady pattern over time rather than jumping
-                  around or disappearing between updates.
-                </span>
-              </div>
-
-              {candidateHistory.length > 0 ? (
-                <>
-                  <div className="history-strip" aria-label="Recent hum candidate history">
-                    {candidateHistory.map((entry) => (
-                      <div
-                        key={entry.timestamp}
-                        className={`history-tick ${
-                          entry.candidateFrequencyHz === null
-                            ? 'history-tick-empty'
-                            : entry.familyLabel !== null
-                              ? 'history-tick-family'
-                              : ''
-                        }`}
-                        style={{
-                          height: `${Math.max(22, (entry.confidencePercent / 100) * 72)}px`,
-                        }}
-                        title={
-                          entry.candidateFrequencyHz !== null
-                            ? `${entry.candidateFrequencyHz.toFixed(1)} Hz, ${entry.confidencePercent}%`
-                            : 'No clear candidate'
-                        }
-                      />
-                    ))}
-                  </div>
-
-                  <div className="history-caption-row">
-                    <span>Older</span>
-                    <span>
-                      Latest:{' '}
-                      {latestHistoryEntry !== null && latestHistoryEntry.candidateFrequencyHz !== null
-                        ? `${latestHistoryEntry.candidateFrequencyHz.toFixed(1)} Hz`
-                        : 'No clear candidate'}
-                    </span>
-                  </div>
-
-                  <p className="history-note">
-                    Blue ticks mark candidate updates. Brighter ticks indicate a possible harmonic
-                    family was active for that reading.
-                  </p>
-                </>
-              ) : (
-                <p className="empty-state">History will begin once a few candidate updates arrive.</p>
-              )}
-            </section>
-
-            <section className="visualizer-panel">
-              <div className="section-heading">
-                <h2>Live Spectrum</h2>
-                <span>Smoothed low-frequency view under 300 Hz</span>
-              </div>
-
-              <section className="visualizer" aria-label="Low frequency visualization">
-                {bars.map((magnitude, index) => (
-                  <div key={index} className="bar-slot">
-                    <div
-                      className="bar-fill"
-                      style={{ height: `${Math.max(6, (magnitude / 255) * 100)}%` }}
-                    />
-                  </div>
-                ))}
-              </section>
-            </section>
-
-            <section className="peaks-panel">
-              <div className="section-heading">
-                <h2>Top 5 Peaks Under 300 Hz</h2>
-                <span>Smoothed live FFT snapshot</span>
-              </div>
-
-              {peaks.length > 0 ? (
-                <ul className="peak-list">
-                  {peaks.map((peak) => (
-                    <li key={`${peak.frequencyHz}-${peak.magnitude}`} className="peak-item">
-                      <span>{peak.frequencyHz.toFixed(1)} Hz</span>
-                      <span>{Math.round(peak.magnitude)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="empty-state">No low-frequency peaks detected yet.</p>
-              )}
-            </section>
-          </div>
+          <MonitorView
+            isListening={isListening}
+            canStop={isListening || audioRef.current !== null}
+            onStartListening={() => void startListening()}
+            onStopListening={() => void stopListening()}
+            humCandidate={humCandidate}
+            mainsBands={mainsBands}
+            humFamilies={humFamilies}
+            stabilityState={stabilityState}
+            candidateHistory={candidateHistory}
+            latestHistoryEntry={latestHistoryEntry}
+            bars={bars}
+            peaks={peaks}
+          />
         ) : null}
 
         {activeView === 'analysis' ? (
-          <div className="view-stack">
-            <section className="analysis-panel">
-              <div className="section-heading">
-                <h2>Debug Analysis</h2>
-                <span>Why this candidate is being chosen</span>
-              </div>
-
-              <p className="analysis-note">
-                Frequencies below {settings.rumbleCutoffHz} Hz can still appear here, but they
-                will not become the main hum candidate.
-              </p>
-
-              <p className="analysis-note">
-                Use this view when the monitor looks surprising or when you want to compare several
-                persistent bands side by side.
-              </p>
-
-              {persistentCandidates.length > 0 ? (
-                <ul className="analysis-list">
-                  {persistentCandidates.map((candidate) => (
-                    <li key={candidate.frequencyHz} className="analysis-item">
-                      <div>
-                        <strong>{candidate.frequencyHz.toFixed(1)} Hz</strong>
-                        {candidate.nearestMainsBandHz !== null ? (
-                          <span className="analysis-tag">
-                            near {candidate.nearestMainsBandHz} Hz
-                          </span>
-                        ) : null}
-                        {candidate.excludedByRumbleFilter ? (
-                          <span className="analysis-tag analysis-tag-muted">below cutoff</span>
-                        ) : null}
-                      </div>
-                      <span>avg strength {candidate.averageStrength.toFixed(1)}</span>
-                      <span>persistence {candidate.confidencePercent}%</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="empty-state">
-                  Persistent candidates will appear here while listening.
-                </p>
-              )}
-            </section>
-          </div>
+          <AnalysisView
+            rumbleCutoffHz={settings.rumbleCutoffHz}
+            persistentCandidates={persistentCandidates}
+          />
         ) : null}
 
         {activeView === 'settings' ? (
-          <div className="view-stack">
-            <section className="settings-panel">
-              <div className="section-heading">
-                <h2>Detection Settings</h2>
-                <span>Updates live while listening</span>
-              </div>
-
-              <p className="settings-note">
-                Use presets for quick tuning, then adjust sliders if your room is unusually noisy
-                or vibration-heavy.
-              </p>
-
-              <div className="preset-row">
-                {Object.entries(DETECTION_PRESETS).map(([presetName, presetSettings]) => (
-                  <button
-                    key={presetName}
-                    type="button"
-                    className="preset-button"
-                    onClick={() => applyPreset(presetSettings)}
-                  >
-                    {presetName}
-                  </button>
-                ))}
-              </div>
-
-              <div className="settings-grid">
-                <label className="setting-control">
-                  <span>Rumble cutoff</span>
-                  <strong>{settings.rumbleCutoffHz} Hz</strong>
-                  <input
-                    type="range"
-                    min="10"
-                    max="40"
-                    step="1"
-                    value={settings.rumbleCutoffHz}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        rumbleCutoffHz: Number(event.target.value),
-                      }))
-                    }
-                  />
-                </label>
-
-                <label className="setting-control">
-                  <span>Minimum persistence</span>
-                  <strong>{settings.minimumPersistencePercent}%</strong>
-                  <input
-                    type="range"
-                    min="10"
-                    max="80"
-                    step="1"
-                    value={settings.minimumPersistencePercent}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        minimumPersistencePercent: Number(event.target.value),
-                      }))
-                    }
-                  />
-                </label>
-
-                <label className="setting-control">
-                  <span>Minimum average strength</span>
-                  <strong>{settings.minimumAverageStrength.toFixed(0)}</strong>
-                  <input
-                    type="range"
-                    min="8"
-                    max="60"
-                    step="1"
-                    value={settings.minimumAverageStrength}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        minimumAverageStrength: Number(event.target.value),
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-
-              <p className="settings-note">
-                Lower cutoff values allow more vibration and rumble to compete. Higher cutoff
-                values focus the main hum candidate on more audible low-frequency tones.
-              </p>
-            </section>
-          </div>
+          <SettingsView
+            settings={settings}
+            onApplyPreset={applyPreset}
+            onRumbleCutoffChange={(value) =>
+              setSettings((current) => ({
+                ...current,
+                rumbleCutoffHz: value,
+              }))
+            }
+            onMinimumPersistenceChange={(value) =>
+              setSettings((current) => ({
+                ...current,
+                minimumPersistencePercent: value,
+              }))
+            }
+            onMinimumAverageStrengthChange={(value) =>
+              setSettings((current) => ({
+                ...current,
+                minimumAverageStrength: value,
+              }))
+            }
+          />
         ) : null}
       </section>
     </main>

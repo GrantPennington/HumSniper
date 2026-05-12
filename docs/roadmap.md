@@ -11,6 +11,7 @@ V1
 - Harmonic family grouping
 - Candidate history strip
 - App architecture refactor
+- Presentational view extraction
 
 V2
 - Spectrogram

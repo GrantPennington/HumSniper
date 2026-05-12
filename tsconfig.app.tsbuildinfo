@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/audio/constants.ts","./src/audio/frequency.ts","./src/audio/harmonics.ts","./src/audio/persistence.ts","./src/audio/types.ts"],"version":"6.0.3"}
+{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/audio/constants.ts","./src/audio/frequency.ts","./src/audio/harmonics.ts","./src/audio/persistence.ts","./src/audio/types.ts","./src/components/AnalysisView.tsx","./src/components/MonitorView.tsx","./src/components/SettingsView.tsx"],"version":"6.0.3"}

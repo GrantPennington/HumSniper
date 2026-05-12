@@ -174,3 +174,23 @@ Next goals:
 - extract Monitor, Analysis, and Settings views into presentational components
 - keep verifying that refactors do not change the detector behavior
 - reduce `App.tsx` down to orchestration only
+
+### Slice 009 Complete
+
+Extracted the three main tab views into presentational React components while keeping all audio state and lifecycle logic in `App.tsx`.
+
+Features:
+- Monitor view component
+- Analysis view component
+- Settings view component
+- explicit typed props for view data and handlers
+
+Key observations:
+- `App.tsx` is much easier to scan once the large JSX blocks are removed
+- keeping the views presentational avoided any detector behavior changes
+- the next refactor step can focus on smaller shared UI pieces rather than core orchestration
+
+Next goals:
+- extract repeated panel sections into smaller leaf components where useful
+- keep `App.tsx` focused on orchestration only
+- continue verifying that refactors do not change the live detector behavior
