@@ -49,3 +49,24 @@ Next goals:
 - tune thresholds with more real room noise
 - add lightweight history or trend cues
 - separate hum-like narrow tones from broader low-frequency noise
+
+### Slice 003 Complete
+
+Added a debug-oriented analysis layer to make the hum candidate selection easier to inspect.
+
+Features:
+- top persistent candidate list
+- per-candidate average strength and persistence percentage
+- optional mains-band labels
+- sub-20Hz rumble filter toggle for the main candidate
+- explanatory UI note for rumble vs audible hum
+
+Key observations:
+- very low-frequency energy can dominate a heuristic even when it is more felt than heard
+- showing multiple persistent candidates makes threshold tuning easier
+- the candidate explanation panel reduces "why did it pick that?" confusion
+
+Next goals:
+- compare neighboring harmonics more explicitly
+- add lightweight history for candidate stability over time
+- tune the rumble cutoff and confidence thresholds with more room samples

@@ -14,6 +14,14 @@ type HumCandidate = {
   nearestMainsBandHz: number | null;
 };
 
+type PersistentCandidate = {
+  frequencyHz: number;
+  averageStrength: number;
+  confidencePercent: number;
+  nearestMainsBandHz: number | null;
+  excludedByRumbleFilter: boolean;
+};
+
 type MainsBandReading = {
   frequencyHz: number;
   intensity: number;
@@ -39,11 +47,13 @@ type AudioResources = {
 const FFT_SIZE = 4096;
 const MAX_DISPLAY_FREQUENCY = 300;
 const PEAK_COUNT = 5;
+const PERSISTENT_CANDIDATE_COUNT = 5;
 const BAR_COUNT = 40;
 const SMOOTHING_DECAY = 0.82;
 const PERSISTENCE_SAMPLE_INTERVAL_MS = 120;
 const PERSISTENCE_WINDOW_SAMPLES = 32;
 const MIN_CANDIDATE_MAGNITUDE = 24;
+const RUMBLE_CUTOFF_HZ = 20;
 const MAINS_HUM_BANDS = [50, 60, 100, 120, 150, 180, 240] as const;
 
 const emptyCandidate: HumCandidate = {
@@ -57,13 +67,20 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function findNearestMainsBand(frequencyHz: number) {
-  return MAINS_HUM_BANDS.reduce((nearest, bandHz) => {
-    const nearestDistance = Math.abs(nearest - frequencyHz);
-    const bandDistance = Math.abs(bandHz - frequencyHz);
+function findNearestMainsBandWithinTolerance(frequencyHz: number, toleranceHz: number) {
+  let nearestBandHz: number | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
 
-    return bandDistance < nearestDistance ? bandHz : nearest;
-  });
+  for (const bandHz of MAINS_HUM_BANDS) {
+    const distance = Math.abs(bandHz - frequencyHz);
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestBandHz = bandHz;
+    }
+  }
+
+  return nearestDistance <= toleranceHz ? nearestBandHz : null;
 }
 
 function classifyHumCandidate(confidencePercent: number): HumStatus {
@@ -87,6 +104,8 @@ function App() {
   const [peaks, setPeaks] = useState<FrequencyPeak[]>([]);
   const [bars, setBars] = useState<number[]>(() => Array.from({ length: BAR_COUNT }, () => 0));
   const [humCandidate, setHumCandidate] = useState<HumCandidate>(emptyCandidate);
+  const [persistentCandidates, setPersistentCandidates] = useState<PersistentCandidate[]>([]);
+  const [ignoreSub20HzRumble, setIgnoreSub20HzRumble] = useState(true);
   const [mainsBands, setMainsBands] = useState<MainsBandReading[]>(
     MAINS_HUM_BANDS.map((frequencyHz) => ({
       frequencyHz,
@@ -108,6 +127,7 @@ function App() {
     setPeaks([]);
     setBars(Array.from({ length: BAR_COUNT }, () => 0));
     setHumCandidate(emptyCandidate);
+    setPersistentCandidates([]);
     setMainsBands(
       MAINS_HUM_BANDS.map((frequencyHz) => ({
         frequencyHz,
@@ -197,8 +217,8 @@ function App() {
         analyser.getByteFrequencyData(frequencyData);
         const persistence = persistenceRef.current;
 
-        // Apply a small rolling average per FFT bin so the live graph and peak list
-        // react quickly without snapping to every short-lived fluctuation.
+        // Smooth each low-frequency FFT bin over time so short spikes do not
+        // dominate the live display or the persistence-based scoring.
         for (let binIndex = 0; binIndex <= maxBin; binIndex += 1) {
           const rawMagnitude = frequencyData[binIndex] ?? 0;
           const previousMagnitude = persistence.smoothedBins[binIndex] ?? 0;
@@ -243,10 +263,7 @@ function App() {
         setPeaks(peakCandidates.slice(0, PEAK_COUNT));
         setBars(nextBars);
 
-        if (
-          timestampMs - persistence.lastSampleTimeMs >= PERSISTENCE_SAMPLE_INTERVAL_MS &&
-          persistence.sampleCount <= PERSISTENCE_WINDOW_SAMPLES
-        ) {
+        if (timestampMs - persistence.lastSampleTimeMs >= PERSISTENCE_SAMPLE_INTERVAL_MS) {
           const historyFrame = persistence.historyFrames[persistence.frameIndex];
 
           if (!historyFrame) {
@@ -254,9 +271,9 @@ function App() {
             return;
           }
 
-          // Keep a short rolling window of already-smoothed FFT snapshots. The
-          // candidate panel uses the running sums from this window to estimate
-          // whether one band is sticking around for several seconds.
+          // Keep a short rolling window of smoothed FFT snapshots in memory.
+          // The debug panel and main candidate both use these running averages
+          // rather than any saved raw microphone data.
           for (let binIndex = 0; binIndex <= maxBin; binIndex += 1) {
             const sampleMagnitude = persistence.smoothedBins[binIndex] ?? 0;
             const previousFrameValue = historyFrame[binIndex] ?? 0;
@@ -274,8 +291,7 @@ function App() {
           persistence.lastSampleTimeMs = timestampMs;
 
           const warmupRatio = persistence.sampleCount / PERSISTENCE_WINDOW_SAMPLES;
-          let strongestPersistentBin = 0;
-          let strongestScore = 0;
+          const nextPersistentCandidates: PersistentCandidate[] = [];
 
           for (let binIndex = 1; binIndex <= maxBin; binIndex += 1) {
             const averageMagnitude =
@@ -302,31 +318,42 @@ function App() {
             );
             const strength = clamp(averageMagnitude / 140, 0, 1);
             const score = (strength * 0.65 + stability * 0.35) * warmupRatio;
+            const confidencePercent = Math.round(clamp(score * 100, 0, 95));
+            const frequencyHz = binIndex * binWidth;
+            const nearestMainsBandHz = findNearestMainsBandWithinTolerance(frequencyHz, 6);
 
-            if (score > strongestScore) {
-              strongestScore = score;
-              strongestPersistentBin = binIndex;
-            }
+            nextPersistentCandidates.push({
+              frequencyHz,
+              averageStrength: averageMagnitude,
+              confidencePercent,
+              nearestMainsBandHz,
+              excludedByRumbleFilter: ignoreSub20HzRumble && frequencyHz < RUMBLE_CUTOFF_HZ,
+            });
           }
 
-          const confidencePercent = Math.round(clamp(strongestScore * 100, 0, 95));
-          const candidateFrequencyHz =
-            strongestPersistentBin > 0 ? strongestPersistentBin * binWidth : null;
-          const nearestMainsBandHz =
-            candidateFrequencyHz !== null
-              ? findNearestMainsBand(candidateFrequencyHz)
-              : null;
+          nextPersistentCandidates.sort((left, right) => {
+            if (right.confidencePercent !== left.confidencePercent) {
+              return right.confidencePercent - left.confidencePercent;
+            }
+
+            return right.averageStrength - left.averageStrength;
+          });
+
+          setPersistentCandidates(
+            nextPersistentCandidates.slice(0, PERSISTENT_CANDIDATE_COUNT),
+          );
+
+          const mainCandidate =
+            nextPersistentCandidates.find((candidate) => !candidate.excludedByRumbleFilter) ?? null;
+          const candidateFrequencyHz = mainCandidate?.frequencyHz ?? null;
+          const confidencePercent = mainCandidate?.confidencePercent ?? 0;
+          const nearestMainsBandHz = mainCandidate?.nearestMainsBandHz ?? null;
 
           setHumCandidate({
             frequencyHz: candidateFrequencyHz,
             confidencePercent,
             status: classifyHumCandidate(confidencePercent),
-            nearestMainsBandHz:
-              candidateFrequencyHz !== null &&
-              nearestMainsBandHz !== null &&
-              Math.abs(nearestMainsBandHz - candidateFrequencyHz) <= 6
-                ? nearestMainsBandHz
-                : null,
+            nearestMainsBandHz,
           });
 
           setMainsBands(
@@ -454,6 +481,52 @@ function App() {
               </span>
             ))}
           </div>
+        </section>
+
+        <section className="analysis-panel">
+          <div className="section-heading">
+            <h2>Debug Analysis</h2>
+            <span>Why this candidate is being chosen</span>
+          </div>
+
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={ignoreSub20HzRumble}
+              onChange={(event) => setIgnoreSub20HzRumble(event.target.checked)}
+            />
+            <span>Ignore sub-20Hz rumble for main hum candidate</span>
+          </label>
+
+          <p className="analysis-note">
+            Sub-20Hz activity may reflect vibration or structural rumble rather than audible hum.
+          </p>
+
+          {persistentCandidates.length > 0 ? (
+            <ul className="analysis-list">
+              {persistentCandidates.map((candidate) => (
+                <li key={candidate.frequencyHz} className="analysis-item">
+                  <div>
+                    <strong>{candidate.frequencyHz.toFixed(1)} Hz</strong>
+                    {candidate.nearestMainsBandHz !== null ? (
+                      <span className="analysis-tag">
+                        near {candidate.nearestMainsBandHz} Hz
+                      </span>
+                    ) : null}
+                    {candidate.excludedByRumbleFilter ? (
+                      <span className="analysis-tag analysis-tag-muted">
+                        excluded from main candidate
+                      </span>
+                    ) : null}
+                  </div>
+                  <span>avg strength {candidate.averageStrength.toFixed(1)}</span>
+                  <span>persistence {candidate.confidencePercent}%</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-state">Persistent candidates will appear here while listening.</p>
+          )}
         </section>
 
         <section className="visualizer" aria-label="Low frequency visualization">

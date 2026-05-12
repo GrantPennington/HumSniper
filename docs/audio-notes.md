@@ -2,3 +2,5 @@
 - HVAC produces strong low-frequency band
 - Voice occupies much wider spectrum than expected
 - FFT bins become more stable with larger fftSize
+- Observed room frequencies worth revisiting: 10Hz, 23Hz, and 172Hz
+- Very low bands can behave more like rumble or vibration than audible hum
