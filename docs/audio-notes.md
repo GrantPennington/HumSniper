@@ -6,3 +6,4 @@
 - Very low bands can behave more like rumble or vibration than audible hum
 - 10Hz and 21Hz activity tend to behave more like rumble than a useful audible hum target
 - 50Hz to 60Hz bands remain more convincing hum candidates when rumble cutoff is raised
+- Frequencies near 150Hz, 180Hz, and 240Hz may be harmonics related to 50Hz or 60Hz hum families

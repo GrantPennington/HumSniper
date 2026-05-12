@@ -8,12 +8,12 @@ V1
 - Detection tuning controls
 - Presets for noisy rooms
 - Instrument-style layout cleanup
+- Harmonic family grouping
 
 V2
 - Spectrogram
 - Frequency history
 - Sensitivity controls
-- Harmonic grouping
 
 V3
 - Source estimation

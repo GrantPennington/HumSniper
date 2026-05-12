@@ -22,6 +22,14 @@ type PersistentCandidate = {
   excludedByRumbleFilter: boolean;
 };
 
+type HumFamily = {
+  baseFrequencyHz: 50 | 60;
+  label: string;
+  matchedBandsHz: number[];
+  combinedScore: number;
+  explanation: string;
+};
+
 type MainsBandReading = {
   frequencyHz: number;
   intensity: number;
@@ -60,7 +68,12 @@ const BAR_COUNT = 40;
 const SMOOTHING_DECAY = 0.82;
 const PERSISTENCE_SAMPLE_INTERVAL_MS = 120;
 const PERSISTENCE_WINDOW_SAMPLES = 32;
+const HARMONIC_TOLERANCE_HZ = 10;
 const MAINS_HUM_BANDS = [50, 60, 100, 120, 150, 180, 240] as const;
+const HARMONIC_FAMILIES = [
+  { baseFrequencyHz: 50 as const, harmonicBandsHz: [50, 100, 150, 200, 250] },
+  { baseFrequencyHz: 60 as const, harmonicBandsHz: [60, 120, 180, 240] },
+];
 
 const DETECTION_PRESETS = {
   Sensitive: {
@@ -117,6 +130,51 @@ function classifyHumCandidate(confidencePercent: number): HumStatus {
   }
 
   return 'No stable hum';
+}
+
+function buildHumFamilies(candidates: PersistentCandidate[]) {
+  // A single source can create energy at multiples of a base frequency. Those
+  // multiples are harmonics, and grouping them helps separate meaningful hum
+  // patterns from isolated peaks that happen to be strong on their own.
+  return HARMONIC_FAMILIES.map((family) => {
+    const matches = family.harmonicBandsHz
+      .map((bandHz) => {
+        const matchedCandidate = candidates.find(
+          (candidate) => Math.abs(candidate.frequencyHz - bandHz) <= HARMONIC_TOLERANCE_HZ,
+        );
+
+        return matchedCandidate
+          ? {
+              targetBandHz: bandHz,
+              candidate: matchedCandidate,
+            }
+          : null;
+      })
+      .filter((match): match is NonNullable<typeof match> => match !== null);
+
+    if (matches.length === 0) {
+      return null;
+    }
+
+    const averageConfidence =
+      matches.reduce((sum, match) => sum + match.candidate.confidencePercent, 0) / matches.length;
+    const averageStrength =
+      matches.reduce((sum, match) => sum + match.candidate.averageStrength, 0) / matches.length;
+    const harmonicCoverage = matches.length / family.harmonicBandsHz.length;
+    const combinedScore = Math.round(
+      clamp(averageConfidence * 0.6 + averageStrength * 0.35 + harmonicCoverage * 100 * 0.25, 0, 99),
+    );
+
+    return {
+      baseFrequencyHz: family.baseFrequencyHz,
+      label: `Possible ${family.baseFrequencyHz} Hz family`,
+      matchedBandsHz: matches.map((match) => match.targetBandHz),
+      combinedScore,
+      explanation: `${matches.length} matched band${matches.length === 1 ? '' : 's'} suggest a candidate family around ${family.baseFrequencyHz} Hz.`,
+    } satisfies HumFamily;
+  })
+    .filter((family): family is HumFamily => family !== null)
+    .sort((left, right) => right.combinedScore - left.combinedScore);
 }
 
 function App() {
@@ -193,6 +251,8 @@ function App() {
   const applyPreset = (preset: DetectionSettings) => {
     setSettings(preset);
   };
+
+  const humFamilies = buildHumFamilies(persistentCandidates);
 
   const startListening = async () => {
     if (isListening) {
@@ -564,6 +624,38 @@ function App() {
                   </span>
                 ))}
               </div>
+            </section>
+
+            <section className="family-panel">
+              <div className="section-heading">
+                <h2>Hum Families</h2>
+                <span>Grouped harmonic patterns under 300 Hz</span>
+              </div>
+
+              <p className="family-note">
+                Matched bands are possible family hints only. A recurring source can create energy
+                at multiples of a base frequency, which is why 50 Hz or 60 Hz patterns often show
+                up in related bands.
+              </p>
+
+              {humFamilies.length > 0 ? (
+                <ul className="family-list">
+                  {humFamilies.map((family) => (
+                    <li key={family.baseFrequencyHz} className="family-item">
+                      <div>
+                        <strong>{family.label}</strong>
+                        <p className="family-explanation">{family.explanation}</p>
+                      </div>
+                      <span>matched bands {family.matchedBandsHz.join(', ')} Hz</span>
+                      <span>combined score {family.combinedScore}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="empty-state">
+                  No clear 50 Hz or 60 Hz family matches are visible right now.
+                </p>
+              )}
             </section>
 
             <section className="visualizer-panel">

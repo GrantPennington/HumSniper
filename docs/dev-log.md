@@ -112,3 +112,24 @@ Next goals:
 - group harmonics into hum families
 - add short candidate history so users can see drift
 - compare monitor behavior across rooms and microphones
+
+### Slice 006 Complete
+
+Added simple harmonic grouping so related bands can be shown as possible 50 Hz or 60 Hz hum families.
+
+Features:
+- 50 Hz family grouping
+- 60 Hz family grouping
+- matched harmonic band summaries
+- combined family score
+- family explanations near the main candidate view
+
+Key observations:
+- grouped bands are easier to interpret than isolated peaks
+- 50/100/150 and 60/120/180 patterns feel more like real source signatures
+- family summaries help explain why several nearby bands may belong together
+
+Next goals:
+- add short candidate history so users can see drift
+- compare hum family behavior across rooms and microphones
+- refine family scoring with real-world examples
