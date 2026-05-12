@@ -1,223 +1,40 @@
 import { useEffect, useRef, useState } from 'react';
-
-type FrequencyPeak = {
-  frequencyHz: number;
-  magnitude: number;
-};
-
-type HumStatus = 'No stable hum' | 'Possible hum' | 'Likely persistent hum';
-
-type HumCandidate = {
-  frequencyHz: number | null;
-  confidencePercent: number;
-  status: HumStatus;
-  nearestMainsBandHz: number | null;
-};
-
-type PersistentCandidate = {
-  frequencyHz: number;
-  averageStrength: number;
-  confidencePercent: number;
-  nearestMainsBandHz: number | null;
-  excludedByRumbleFilter: boolean;
-};
-
-type HumFamily = {
-  baseFrequencyHz: 50 | 60;
-  label: string;
-  matchedBandsHz: number[];
-  combinedScore: number;
-  explanation: string;
-};
-
-type CandidateHistoryEntry = {
-  timestamp: number;
-  candidateFrequencyHz: number | null;
-  confidencePercent: number;
-  status: HumStatus;
-  familyLabel: string | null;
-};
-
-type StabilityState = 'stable' | 'drifting' | 'intermittent';
-
-type MainsBandReading = {
-  frequencyHz: number;
-  intensity: number;
-  highlighted: boolean;
-};
-
-type DetectionSettings = {
-  rumbleCutoffHz: number;
-  minimumPersistencePercent: number;
-  minimumAverageStrength: number;
-};
-
-type AppView = 'monitor' | 'analysis' | 'settings';
-
-type PersistenceState = {
-  smoothedBins: number[];
-  historyFrames: number[][];
-  historySums: number[];
-  frameIndex: number;
-  sampleCount: number;
-  lastSampleTimeMs: number;
-};
-
-type AudioResources = {
-  audioContext: AudioContext;
-  analyser: AnalyserNode;
-  stream: MediaStream;
-  animationFrameId: number | null;
-};
-
-const FFT_SIZE = 4096;
-const MAX_DISPLAY_FREQUENCY = 300;
-const PEAK_COUNT = 5;
-const PERSISTENT_CANDIDATE_COUNT = 5;
-const BAR_COUNT = 40;
-const SMOOTHING_DECAY = 0.82;
-const PERSISTENCE_SAMPLE_INTERVAL_MS = 120;
-const PERSISTENCE_WINDOW_SAMPLES = 32;
-const HARMONIC_TOLERANCE_HZ = 10;
-const CANDIDATE_HISTORY_LIMIT = 24;
-const MAINS_HUM_BANDS = [50, 60, 100, 120, 150, 180, 240] as const;
-const HARMONIC_FAMILIES = [
-  { baseFrequencyHz: 50 as const, harmonicBandsHz: [50, 100, 150, 200, 250] },
-  { baseFrequencyHz: 60 as const, harmonicBandsHz: [60, 120, 180, 240] },
-];
-
-const DETECTION_PRESETS = {
-  Sensitive: {
-    rumbleCutoffHz: 12,
-    minimumPersistencePercent: 24,
-    minimumAverageStrength: 16,
-  },
-  Balanced: {
-    rumbleCutoffHz: 20,
-    minimumPersistencePercent: 38,
-    minimumAverageStrength: 24,
-  },
-  Strict: {
-    rumbleCutoffHz: 30,
-    minimumPersistencePercent: 56,
-    minimumAverageStrength: 36,
-  },
-} satisfies Record<string, DetectionSettings>;
-
-const emptyCandidate: HumCandidate = {
-  frequencyHz: null,
-  confidencePercent: 0,
-  status: 'No stable hum',
-  nearestMainsBandHz: null,
-};
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function findNearestMainsBandWithinTolerance(frequencyHz: number, toleranceHz: number) {
-  let nearestBandHz: number | null = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-
-  for (const bandHz of MAINS_HUM_BANDS) {
-    const distance = Math.abs(bandHz - frequencyHz);
-
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestBandHz = bandHz;
-    }
-  }
-
-  return nearestDistance <= toleranceHz ? nearestBandHz : null;
-}
-
-function classifyHumCandidate(confidencePercent: number): HumStatus {
-  if (confidencePercent >= 68) {
-    return 'Likely persistent hum';
-  }
-
-  if (confidencePercent >= 38) {
-    return 'Possible hum';
-  }
-
-  return 'No stable hum';
-}
-
-function buildHumFamilies(candidates: PersistentCandidate[]) {
-  // A single source can create energy at multiples of a base frequency. Those
-  // multiples are harmonics, and grouping them helps separate meaningful hum
-  // patterns from isolated peaks that happen to be strong on their own.
-  return HARMONIC_FAMILIES.map((family) => {
-    const matches = family.harmonicBandsHz
-      .map((bandHz) => {
-        const matchedCandidate = candidates.find(
-          (candidate) => Math.abs(candidate.frequencyHz - bandHz) <= HARMONIC_TOLERANCE_HZ,
-        );
-
-        return matchedCandidate
-          ? {
-              targetBandHz: bandHz,
-              candidate: matchedCandidate,
-            }
-          : null;
-      })
-      .filter((match): match is NonNullable<typeof match> => match !== null);
-
-    if (matches.length === 0) {
-      return null;
-    }
-
-    const averageConfidence =
-      matches.reduce((sum, match) => sum + match.candidate.confidencePercent, 0) / matches.length;
-    const averageStrength =
-      matches.reduce((sum, match) => sum + match.candidate.averageStrength, 0) / matches.length;
-    const harmonicCoverage = matches.length / family.harmonicBandsHz.length;
-    const combinedScore = Math.round(
-      clamp(averageConfidence * 0.6 + averageStrength * 0.35 + harmonicCoverage * 100 * 0.25, 0, 99),
-    );
-
-    return {
-      baseFrequencyHz: family.baseFrequencyHz,
-      label: `Possible ${family.baseFrequencyHz} Hz family`,
-      matchedBandsHz: matches.map((match) => match.targetBandHz),
-      combinedScore,
-      explanation: `${matches.length} matched band${matches.length === 1 ? '' : 's'} suggest a candidate family around ${family.baseFrequencyHz} Hz.`,
-    } satisfies HumFamily;
-  })
-    .filter((family): family is HumFamily => family !== null)
-    .sort((left, right) => right.combinedScore - left.combinedScore);
-}
-
-function deriveStabilityState(history: CandidateHistoryEntry[]): StabilityState {
-  const recentHistory = history.slice(-12);
-
-  if (recentHistory.length < 4) {
-    return 'intermittent';
-  }
-
-  const activeEntries = recentHistory.filter((entry) => entry.candidateFrequencyHz !== null);
-
-  if (activeEntries.length / recentHistory.length < 0.65) {
-    return 'intermittent';
-  }
-
-  const frequencies = activeEntries
-    .map((entry) => entry.candidateFrequencyHz)
-    .filter((frequency): frequency is number => frequency !== null);
-  const minFrequency = Math.min(...frequencies);
-  const maxFrequency = Math.max(...frequencies);
-  const spreadHz = maxFrequency - minFrequency;
-
-  if (spreadHz <= 8) {
-    return 'stable';
-  }
-
-  if (spreadHz <= 25) {
-    return 'drifting';
-  }
-
-  return 'intermittent';
-}
+import {
+  DETECTION_PRESETS,
+  EMPTY_HUM_CANDIDATE,
+  FFT_SIZE,
+  MAX_DISPLAY_FREQUENCY,
+  PERSISTENCE_SAMPLE_INTERVAL_MS,
+  PERSISTENT_CANDIDATE_COUNT,
+  createEmptyBars,
+  createEmptyMainsBandReadings,
+} from './audio/constants';
+import {
+  buildMainsBandReadings,
+  buildPeaksAndBars,
+  smoothFrequencyBins,
+} from './audio/frequency';
+import {
+  appendCandidateHistory,
+  createPersistenceState,
+  deriveFamiliesFromCandidates,
+  deriveMainHumCandidate,
+  derivePersistentCandidates,
+  deriveStabilityState,
+  samplePersistenceFrame,
+} from './audio/persistence';
+import type {
+  AppView,
+  AudioResources,
+  CandidateHistoryEntry,
+  DetectionSettings,
+  FrequencyPeak,
+  HumCandidate,
+  HumFamily,
+  MainsBandReading,
+  PersistentCandidate,
+  PersistenceState,
+} from './audio/types';
 
 function App() {
   const [activeView, setActiveView] = useState<AppView>('monitor');
@@ -227,19 +44,13 @@ function App() {
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [peaks, setPeaks] = useState<FrequencyPeak[]>([]);
-  const [bars, setBars] = useState<number[]>(() => Array.from({ length: BAR_COUNT }, () => 0));
-  const [humCandidate, setHumCandidate] = useState<HumCandidate>(emptyCandidate);
+  const [bars, setBars] = useState<number[]>(() => createEmptyBars());
+  const [humCandidate, setHumCandidate] = useState<HumCandidate>(EMPTY_HUM_CANDIDATE);
   const [persistentCandidates, setPersistentCandidates] = useState<PersistentCandidate[]>([]);
   const [humFamilies, setHumFamilies] = useState<HumFamily[]>([]);
   const [candidateHistory, setCandidateHistory] = useState<CandidateHistoryEntry[]>([]);
   const [settings, setSettings] = useState<DetectionSettings>(DETECTION_PRESETS.Balanced);
-  const [mainsBands, setMainsBands] = useState<MainsBandReading[]>(
-    MAINS_HUM_BANDS.map((frequencyHz) => ({
-      frequencyHz,
-      intensity: 0,
-      highlighted: false,
-    })),
-  );
+  const [mainsBands, setMainsBands] = useState<MainsBandReading[]>(createEmptyMainsBandReadings);
   const audioRef = useRef<AudioResources | null>(null);
   const persistenceRef = useRef<PersistenceState | null>(null);
   const settingsRef = useRef<DetectionSettings>(DETECTION_PRESETS.Balanced);
@@ -257,18 +68,12 @@ function App() {
   const resetAnalysisState = () => {
     persistenceRef.current = null;
     setPeaks([]);
-    setBars(Array.from({ length: BAR_COUNT }, () => 0));
-    setHumCandidate(emptyCandidate);
+    setBars(createEmptyBars());
+    setHumCandidate(EMPTY_HUM_CANDIDATE);
     setPersistentCandidates([]);
     setHumFamilies([]);
     setCandidateHistory([]);
-    setMainsBands(
-      MAINS_HUM_BANDS.map((frequencyHz) => ({
-        frequencyHz,
-        intensity: 0,
-        highlighted: false,
-      })),
-    );
+    setMainsBands(createEmptyMainsBandReadings());
   };
 
   const stopListening = async () => {
@@ -297,6 +102,7 @@ function App() {
   const applyPreset = (preset: DetectionSettings) => {
     setSettings(preset);
   };
+
   const stabilityState = deriveStabilityState(candidateHistory);
   const latestHistoryEntry = candidateHistory.at(-1) ?? null;
 
@@ -330,16 +136,7 @@ function App() {
         Math.floor(MAX_DISPLAY_FREQUENCY / binWidth),
       );
 
-      persistenceRef.current = {
-        smoothedBins: Array.from({ length: maxBin + 1 }, () => 0),
-        historyFrames: Array.from({ length: PERSISTENCE_WINDOW_SAMPLES }, () =>
-          Array.from({ length: maxBin + 1 }, () => 0),
-        ),
-        historySums: Array.from({ length: maxBin + 1 }, () => 0),
-        frameIndex: 0,
-        sampleCount: 0,
-        lastSampleTimeMs: 0,
-      };
+      persistenceRef.current = createPersistenceState(maxBin);
 
       const resources: AudioResources = {
         audioContext,
@@ -357,184 +154,52 @@ function App() {
         analyser.getByteFrequencyData(frequencyData);
         const persistence = persistenceRef.current;
 
-        for (let binIndex = 0; binIndex <= maxBin; binIndex += 1) {
-          const rawMagnitude = frequencyData[binIndex] ?? 0;
-          const previousMagnitude = persistence.smoothedBins[binIndex] ?? 0;
-          persistence.smoothedBins[binIndex] =
-            previousMagnitude * SMOOTHING_DECAY + rawMagnitude * (1 - SMOOTHING_DECAY);
-        }
+        smoothFrequencyBins(persistence, frequencyData, maxBin);
 
-        const peakCandidates: FrequencyPeak[] = [];
-        const nextBars = Array.from({ length: BAR_COUNT }, (_, barIndex) => {
-          const startBin = Math.floor((barIndex / BAR_COUNT) * (maxBin + 1));
-          const endBin = Math.max(
-            startBin,
-            Math.floor(((barIndex + 1) / BAR_COUNT) * (maxBin + 1)) - 1,
-          );
-
-          let highestMagnitude = 0;
-
-          for (let binIndex = startBin; binIndex <= endBin; binIndex += 1) {
-            const magnitude = persistence.smoothedBins[binIndex] ?? 0;
-
-            if (magnitude > highestMagnitude) {
-              highestMagnitude = magnitude;
-            }
-
-            if (
-              binIndex > 0 &&
-              binIndex < maxBin &&
-              magnitude > (persistence.smoothedBins[binIndex - 1] ?? 0) &&
-              magnitude >= (persistence.smoothedBins[binIndex + 1] ?? 0)
-            ) {
-              peakCandidates.push({
-                frequencyHz: binIndex * binWidth,
-                magnitude,
-              });
-            }
-          }
-
-          return highestMagnitude;
-        });
-
-        peakCandidates.sort((left, right) => right.magnitude - left.magnitude);
-        setPeaks(peakCandidates.slice(0, PEAK_COUNT));
-        setBars(nextBars);
+        const spectrum = buildPeaksAndBars(persistence.smoothedBins, binWidth, maxBin);
+        setPeaks(spectrum.peaks);
+        setBars(spectrum.bars);
 
         if (timestampMs - persistence.lastSampleTimeMs >= PERSISTENCE_SAMPLE_INTERVAL_MS) {
-          const historyFrame = persistence.historyFrames[persistence.frameIndex];
-
-          if (!historyFrame) {
+          if (!samplePersistenceFrame(persistence, maxBin)) {
             resources.animationFrameId = requestAnimationFrame(updateAnalysis);
             return;
           }
 
-          for (let binIndex = 0; binIndex <= maxBin; binIndex += 1) {
-            const sampleMagnitude = persistence.smoothedBins[binIndex] ?? 0;
-            const previousFrameValue = historyFrame[binIndex] ?? 0;
-            const previousSum = persistence.historySums[binIndex] ?? 0;
-            persistence.historySums[binIndex] = previousSum + sampleMagnitude - previousFrameValue;
-            historyFrame[binIndex] = sampleMagnitude;
-          }
-
-          persistence.frameIndex =
-            (persistence.frameIndex + 1) % PERSISTENCE_WINDOW_SAMPLES;
-          persistence.sampleCount = Math.min(
-            persistence.sampleCount + 1,
-            PERSISTENCE_WINDOW_SAMPLES,
-          );
           persistence.lastSampleTimeMs = timestampMs;
 
-          const warmupRatio = persistence.sampleCount / PERSISTENCE_WINDOW_SAMPLES;
           const activeSettings = settingsRef.current;
-          const nextPersistentCandidates: PersistentCandidate[] = [];
-
-          for (let binIndex = 1; binIndex <= maxBin; binIndex += 1) {
-            const averageMagnitude =
-              (persistence.historySums[binIndex] ?? 0) / persistence.sampleCount;
-
-            let meanAbsoluteDeviation = 0;
-
-            for (let sampleIndex = 0; sampleIndex < persistence.sampleCount; sampleIndex += 1) {
-              meanAbsoluteDeviation += Math.abs(
-                (persistence.historyFrames[sampleIndex]?.[binIndex] ?? 0) - averageMagnitude,
-              );
-            }
-
-            meanAbsoluteDeviation /= persistence.sampleCount;
-
-            const stability = clamp(
-              1 - meanAbsoluteDeviation / Math.max(averageMagnitude, 1),
-              0,
-              1,
-            );
-            const strength = clamp(averageMagnitude / 140, 0, 1);
-            const confidencePercent = Math.round(
-              clamp((strength * 0.65 + stability * 0.35) * warmupRatio * 100, 0, 95),
-            );
-            const frequencyHz = binIndex * binWidth;
-            const nearestMainsBandHz = findNearestMainsBandWithinTolerance(frequencyHz, 6);
-
-            // These thresholds only gate which bins count as meaningful persistent
-            // candidates. Lower values make the detector more permissive; higher
-            // values require a tone to be stronger and more stable before selection.
-            const passesThresholds =
-              averageMagnitude >= activeSettings.minimumAverageStrength &&
-              confidencePercent >= activeSettings.minimumPersistencePercent;
-
-            if (!passesThresholds) {
-              continue;
-            }
-
-            nextPersistentCandidates.push({
-              frequencyHz,
-              averageStrength: averageMagnitude,
-              confidencePercent,
-              nearestMainsBandHz,
-              excludedByRumbleFilter: frequencyHz < activeSettings.rumbleCutoffHz,
-            });
-          }
-
-          nextPersistentCandidates.sort((left, right) => {
-            if (right.confidencePercent !== left.confidencePercent) {
-              return right.confidencePercent - left.confidencePercent;
-            }
-
-            return right.averageStrength - left.averageStrength;
+          const nextPersistentCandidates = derivePersistentCandidates({
+            persistence,
+            maxBin,
+            binWidth,
+            settings: activeSettings,
           });
-
-          const nextHumFamilies = buildHumFamilies(nextPersistentCandidates);
+          const nextHumFamilies = deriveFamiliesFromCandidates(nextPersistentCandidates);
 
           setPersistentCandidates(
             nextPersistentCandidates.slice(0, PERSISTENT_CANDIDATE_COUNT),
           );
           setHumFamilies(nextHumFamilies);
 
-          const mainCandidate =
-            nextPersistentCandidates.find((candidate) => !candidate.excludedByRumbleFilter) ?? null;
-          const candidateFrequencyHz = mainCandidate?.frequencyHz ?? null;
-          const confidencePercent = mainCandidate?.confidencePercent ?? 0;
-          const nearestMainsBandHz = mainCandidate?.nearestMainsBandHz ?? null;
-          const status = classifyHumCandidate(confidencePercent);
+          const nextHumCandidate = deriveMainHumCandidate(nextPersistentCandidates);
+          setHumCandidate(nextHumCandidate);
 
-          setHumCandidate({
-            frequencyHz: candidateFrequencyHz,
-            confidencePercent,
-            status,
-            nearestMainsBandHz,
-          });
-
-          setCandidateHistory((currentHistory) => {
-            const nextHistoryEntry: CandidateHistoryEntry = {
+          setCandidateHistory((currentHistory) =>
+            appendCandidateHistory(currentHistory, {
               timestamp: Date.now(),
-              candidateFrequencyHz,
-              confidencePercent,
-              status,
-              familyLabel: nextHumFamilies[0]?.label ?? null,
-            };
-
-            return [...currentHistory, nextHistoryEntry].slice(-CANDIDATE_HISTORY_LIMIT);
-          });
+              humCandidate: nextHumCandidate,
+              humFamilies: nextHumFamilies,
+            }),
+          );
 
           setMainsBands(
-            MAINS_HUM_BANDS.map((frequencyHz) => {
-              const centerBin = Math.round(frequencyHz / binWidth);
-              const averageMagnitude =
-                ((persistence.historySums[centerBin - 1] ?? 0) +
-                  (persistence.historySums[centerBin] ?? 0) +
-                  (persistence.historySums[centerBin + 1] ?? 0)) /
-                (3 * persistence.sampleCount);
-              const intensity = Math.round(clamp((averageMagnitude / 110) * 100, 0, 100));
-
-              return {
-                frequencyHz,
-                intensity,
-                highlighted:
-                  intensity >= 28 ||
-                  (nearestMainsBandHz !== null &&
-                    Math.abs(nearestMainsBandHz - frequencyHz) <= 0.1 &&
-                    confidencePercent >= activeSettings.minimumPersistencePercent),
-              };
+            buildMainsBandReadings({
+              persistence,
+              binWidth,
+              nearestMainsBandHz: nextHumCandidate.nearestMainsBandHz,
+              confidencePercent: nextHumCandidate.confidencePercent,
+              minimumPersistencePercent: activeSettings.minimumPersistencePercent,
             }),
           );
         }

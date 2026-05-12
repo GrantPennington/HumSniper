@@ -153,3 +153,24 @@ Next goals:
 - show which family contributed to each history segment more explicitly
 - compare monitor stability across rooms and microphones
 - refine stability scoring against real examples
+
+### Slice 008 Partial Complete
+
+Started the app-architecture refactor by extracting pure audio constants, types, and helper logic out of `App.tsx`.
+
+Features:
+- shared audio constants module
+- shared audio types module
+- extracted frequency helpers
+- extracted persistence helpers
+- extracted harmonic grouping helper
+
+Key observations:
+- the audio logic is much easier to scan once the React UI is separated from the calculation code
+- keeping this step behavior-preserving made the extraction straightforward
+- `App.tsx` is still large, but the highest-churn analysis logic is now isolated
+
+Next goals:
+- extract Monitor, Analysis, and Settings views into presentational components
+- keep verifying that refactors do not change the detector behavior
+- reduce `App.tsx` down to orchestration only

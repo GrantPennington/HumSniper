@@ -10,6 +10,7 @@ V1
 - Instrument-style layout cleanup
 - Harmonic family grouping
 - Candidate history strip
+- App architecture refactor
 
 V2
 - Spectrogram
