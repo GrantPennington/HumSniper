@@ -92,3 +92,23 @@ Next goals:
 - group harmonics into hum families
 - add short candidate history so users can see drift
 - compare how presets behave across different rooms and devices
+
+### Slice 005 Complete
+
+Reorganized the interface into clearer investigation views so the first screen feels calmer and more instrument-like.
+
+Features:
+- Monitor, Analysis, and Settings sections
+- simpler default monitor view
+- advanced controls moved out of the primary path
+- improved spacing, labels, and helper text
+
+Key observations:
+- the app feels much easier to approach when monitoring is separated from tuning
+- analysis details are still useful, but they should not compete with the main candidate view
+- tabbed organization reduces clutter without removing any local-only functionality
+
+Next goals:
+- group harmonics into hum families
+- add short candidate history so users can see drift
+- compare monitor behavior across rooms and microphones

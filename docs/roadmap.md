@@ -7,6 +7,7 @@ V1
 - Rumble filter toggle
 - Detection tuning controls
 - Presets for noisy rooms
+- Instrument-style layout cleanup
 
 V2
 - Spectrogram
