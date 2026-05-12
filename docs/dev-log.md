@@ -133,3 +133,23 @@ Next goals:
 - add short candidate history so users can see drift
 - compare hum family behavior across rooms and microphones
 - refine family scoring with real-world examples
+
+### Slice 007 Complete
+
+Added a compact candidate history strip so stability and intermittence are easier to judge at a glance.
+
+Features:
+- rolling in-memory candidate history
+- stability summary label
+- compact recent tick strip
+- optional family context attached to history entries
+
+Key observations:
+- short history makes persistent patterns easier to trust
+- intermittent candidates stand out much more clearly once gaps are visible
+- family-aware history adds context without turning the Monitor view into a chart
+
+Next goals:
+- show which family contributed to each history segment more explicitly
+- compare monitor stability across rooms and microphones
+- refine stability scoring against real examples

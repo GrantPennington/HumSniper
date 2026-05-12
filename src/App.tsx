@@ -30,6 +30,16 @@ type HumFamily = {
   explanation: string;
 };
 
+type CandidateHistoryEntry = {
+  timestamp: number;
+  candidateFrequencyHz: number | null;
+  confidencePercent: number;
+  status: HumStatus;
+  familyLabel: string | null;
+};
+
+type StabilityState = 'stable' | 'drifting' | 'intermittent';
+
 type MainsBandReading = {
   frequencyHz: number;
   intensity: number;
@@ -69,6 +79,7 @@ const SMOOTHING_DECAY = 0.82;
 const PERSISTENCE_SAMPLE_INTERVAL_MS = 120;
 const PERSISTENCE_WINDOW_SAMPLES = 32;
 const HARMONIC_TOLERANCE_HZ = 10;
+const CANDIDATE_HISTORY_LIMIT = 24;
 const MAINS_HUM_BANDS = [50, 60, 100, 120, 150, 180, 240] as const;
 const HARMONIC_FAMILIES = [
   { baseFrequencyHz: 50 as const, harmonicBandsHz: [50, 100, 150, 200, 250] },
@@ -177,6 +188,37 @@ function buildHumFamilies(candidates: PersistentCandidate[]) {
     .sort((left, right) => right.combinedScore - left.combinedScore);
 }
 
+function deriveStabilityState(history: CandidateHistoryEntry[]): StabilityState {
+  const recentHistory = history.slice(-12);
+
+  if (recentHistory.length < 4) {
+    return 'intermittent';
+  }
+
+  const activeEntries = recentHistory.filter((entry) => entry.candidateFrequencyHz !== null);
+
+  if (activeEntries.length / recentHistory.length < 0.65) {
+    return 'intermittent';
+  }
+
+  const frequencies = activeEntries
+    .map((entry) => entry.candidateFrequencyHz)
+    .filter((frequency): frequency is number => frequency !== null);
+  const minFrequency = Math.min(...frequencies);
+  const maxFrequency = Math.max(...frequencies);
+  const spreadHz = maxFrequency - minFrequency;
+
+  if (spreadHz <= 8) {
+    return 'stable';
+  }
+
+  if (spreadHz <= 25) {
+    return 'drifting';
+  }
+
+  return 'intermittent';
+}
+
 function App() {
   const [activeView, setActiveView] = useState<AppView>('monitor');
   const [isListening, setIsListening] = useState(false);
@@ -188,6 +230,8 @@ function App() {
   const [bars, setBars] = useState<number[]>(() => Array.from({ length: BAR_COUNT }, () => 0));
   const [humCandidate, setHumCandidate] = useState<HumCandidate>(emptyCandidate);
   const [persistentCandidates, setPersistentCandidates] = useState<PersistentCandidate[]>([]);
+  const [humFamilies, setHumFamilies] = useState<HumFamily[]>([]);
+  const [candidateHistory, setCandidateHistory] = useState<CandidateHistoryEntry[]>([]);
   const [settings, setSettings] = useState<DetectionSettings>(DETECTION_PRESETS.Balanced);
   const [mainsBands, setMainsBands] = useState<MainsBandReading[]>(
     MAINS_HUM_BANDS.map((frequencyHz) => ({
@@ -216,6 +260,8 @@ function App() {
     setBars(Array.from({ length: BAR_COUNT }, () => 0));
     setHumCandidate(emptyCandidate);
     setPersistentCandidates([]);
+    setHumFamilies([]);
+    setCandidateHistory([]);
     setMainsBands(
       MAINS_HUM_BANDS.map((frequencyHz) => ({
         frequencyHz,
@@ -251,8 +297,8 @@ function App() {
   const applyPreset = (preset: DetectionSettings) => {
     setSettings(preset);
   };
-
-  const humFamilies = buildHumFamilies(persistentCandidates);
+  const stabilityState = deriveStabilityState(candidateHistory);
+  const latestHistoryEntry = candidateHistory.at(-1) ?? null;
 
   const startListening = async () => {
     if (isListening) {
@@ -437,21 +483,37 @@ function App() {
             return right.averageStrength - left.averageStrength;
           });
 
+          const nextHumFamilies = buildHumFamilies(nextPersistentCandidates);
+
           setPersistentCandidates(
             nextPersistentCandidates.slice(0, PERSISTENT_CANDIDATE_COUNT),
           );
+          setHumFamilies(nextHumFamilies);
 
           const mainCandidate =
             nextPersistentCandidates.find((candidate) => !candidate.excludedByRumbleFilter) ?? null;
           const candidateFrequencyHz = mainCandidate?.frequencyHz ?? null;
           const confidencePercent = mainCandidate?.confidencePercent ?? 0;
           const nearestMainsBandHz = mainCandidate?.nearestMainsBandHz ?? null;
+          const status = classifyHumCandidate(confidencePercent);
 
           setHumCandidate({
             frequencyHz: candidateFrequencyHz,
             confidencePercent,
-            status: classifyHumCandidate(confidencePercent),
+            status,
             nearestMainsBandHz,
+          });
+
+          setCandidateHistory((currentHistory) => {
+            const nextHistoryEntry: CandidateHistoryEntry = {
+              timestamp: Date.now(),
+              candidateFrequencyHz,
+              confidencePercent,
+              status,
+              familyLabel: nextHumFamilies[0]?.label ?? null,
+            };
+
+            return [...currentHistory, nextHistoryEntry].slice(-CANDIDATE_HISTORY_LIMIT);
           });
 
           setMainsBands(
@@ -655,6 +717,65 @@ function App() {
                 <p className="empty-state">
                   No clear 50 Hz or 60 Hz family matches are visible right now.
                 </p>
+              )}
+            </section>
+
+            <section className="history-panel">
+              <div className="section-heading">
+                <h2>Stability</h2>
+                <span>Recent candidate history</span>
+              </div>
+
+              <div className="history-summary">
+                <strong>{stabilityState}</strong>
+                <span>
+                  A persistent hum should appear as a steady pattern over time rather than jumping
+                  around or disappearing between updates.
+                </span>
+              </div>
+
+              {candidateHistory.length > 0 ? (
+                <>
+                  <div className="history-strip" aria-label="Recent hum candidate history">
+                    {candidateHistory.map((entry) => (
+                      <div
+                        key={entry.timestamp}
+                        className={`history-tick ${
+                          entry.candidateFrequencyHz === null
+                            ? 'history-tick-empty'
+                            : entry.familyLabel !== null
+                              ? 'history-tick-family'
+                              : ''
+                        }`}
+                        style={{
+                          height: `${Math.max(22, (entry.confidencePercent / 100) * 72)}px`,
+                        }}
+                        title={
+                          entry.candidateFrequencyHz !== null
+                            ? `${entry.candidateFrequencyHz.toFixed(1)} Hz, ${entry.confidencePercent}%`
+                            : 'No clear candidate'
+                        }
+                      />
+                    ))}
+                  </div>
+
+                  <div className="history-caption-row">
+                    <span>Older</span>
+                    <span>
+                      Latest:{' '}
+                      {latestHistoryEntry !== null && latestHistoryEntry.candidateFrequencyHz !== null
+                        ? `${latestHistoryEntry.candidateFrequencyHz.toFixed(1)} Hz`
+                        : 'No clear candidate'}
+                    </span>
+                  </div>
+
+                  <p className="history-note">
+                    Blue ticks mark candidate updates. Brighter ticks indicate a possible harmonic
+                    family was active for that reading.
+                  </p>
+                </>
+              ) : (
+                <p className="empty-state">History will begin once a few candidate updates arrive.</p>
               )}
             </section>
 

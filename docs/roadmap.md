@@ -9,6 +9,7 @@ V1
 - Presets for noisy rooms
 - Instrument-style layout cleanup
 - Harmonic family grouping
+- Candidate history strip
 
 V2
 - Spectrogram
