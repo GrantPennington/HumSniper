@@ -258,6 +258,27 @@ Next goals:
 - improve desktop-specific setup diagnostics for missing Rust or WebView prerequisites
 - refine investigation comparison language with more real room-state examples
 
+### Slice 013 Complete
+
+Polished the desktop presentation so the app feels more like a compact utility or instrument panel and less like a responsive web dashboard.
+
+Features:
+- compressed toolbar-style top area
+- tighter desktop panel spacing and typography
+- constrained Top Peaks pane with internal scrolling
+- improved text truncation and overflow handling
+- more stable monitor dashboard proportions
+
+Key observations:
+- the biggest desktop-feel gain came from reducing header prominence rather than adding more styling
+- internal panel scrolling is more appropriate than letting small utility lists stretch the entire window
+- desktop polish is mostly about predictable sizing, not flashy visuals
+
+Next goals:
+- add deeper frequency history views without overwhelming the main monitor
+- improve desktop prerequisite diagnostics for missing Rust or platform tooling
+- keep tightening analysis and investigation tables for longer sessions
+
 Wrapped the existing Vite app in a minimal Tauri v2 desktop shell without changing the frontend analysis workflow.
 
 Features:

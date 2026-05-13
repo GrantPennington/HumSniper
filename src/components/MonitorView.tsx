@@ -102,9 +102,12 @@ function MonitorView({
 
         <div className="spectrum-summary-grid">
           <div className="spectrum-summary-card">
-            <span className="candidate-label">Top peaks</span>
+            <div className="spectrum-card-header">
+              <span className="candidate-label">Top peaks</span>
+              <span className="spectrum-card-meta">{peaks.length} tracked</span>
+            </div>
             {peaks.length > 0 ? (
-              <ul className="peak-list peak-list-compact">
+              <ul className="peak-list peak-list-compact peak-list-scroll">
                 {peaks.map((peak) => (
                   <li key={`${peak.frequencyHz}-${peak.magnitude}`} className="peak-item">
                     <span>{peak.frequencyHz.toFixed(1)} Hz</span>
@@ -118,7 +121,9 @@ function MonitorView({
           </div>
 
           <div className="spectrum-summary-card">
-            <span className="candidate-label">What to watch</span>
+            <div className="spectrum-card-header">
+              <span className="candidate-label">What to watch</span>
+            </div>
             <p className="family-note">
               A persistent hum usually looks steadier than room rumble. Repeating 50 Hz or 60 Hz
               patterns often indicate related harmonics rather than isolated peaks.

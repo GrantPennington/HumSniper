@@ -45,19 +45,19 @@ import type {
 const VIEW_TITLES: Record<AppView, { label: string; description: string }> = {
   monitor: {
     label: 'Monitor',
-    description: 'Live candidate, spectrum, and stability dashboard.',
+    description: 'Live candidate, spectrum, and stability.',
   },
   analysis: {
     label: 'Analysis',
-    description: 'Debug ranking for persistent low-frequency candidates.',
+    description: 'Persistent candidate ranking.',
   },
   settings: {
     label: 'Settings',
-    description: 'Live detector thresholds and presets.',
+    description: 'Live thresholds and presets.',
   },
   investigation: {
     label: 'Investigation',
-    description: 'Capture and compare derived room-state snapshots.',
+    description: 'Compare derived room-state snapshots.',
   },
 };
 
@@ -285,28 +285,26 @@ function App() {
     <main className="app-shell">
       <section className="desktop-frame">
         <header className="topbar">
-          <div className="topbar-row">
+          <div className="topbar-row topbar-row-main">
             <div className="topbar-brand">
-              <div>
-                <p className="eyebrow">Privacy-first local audio investigation</p>
-                <h1>HumSniper</h1>
-              </div>
-              <p className="panel-intro">
-                A local listening instrument for tracking persistent low-frequency hum.
-              </p>
+              <span className="app-title">HumSniper</span>
+              <span className="toolbar-separator" aria-hidden="true" />
+              <span className="toolbar-subtitle">Local hum investigation</span>
             </div>
 
             <div className="topbar-summary">
               <div className="topbar-summary-card">
-                <span className="summary-label">Current view</span>
+                <span className="summary-label">View</span>
                 <strong>{activeViewMeta.label}</strong>
-                <span>{activeViewMeta.description}</span>
+                <span className="toolbar-value-muted">{activeViewMeta.description}</span>
               </div>
 
               <div className="topbar-summary-card">
-                <span className="summary-label">Capture state</span>
-                <strong>{isListening ? 'Microphone active' : 'Microphone inactive'}</strong>
-                <span>{isListening ? 'Audio stays local in memory.' : 'Start listening to analyze.'}</span>
+                <span className="summary-label">Capture</span>
+                <strong>{isListening ? 'Mic active' : 'Mic inactive'}</strong>
+                <span className="toolbar-value-muted">
+                  {isListening ? 'Local in-memory analysis.' : 'Ready to start.'}
+                </span>
               </div>
 
               <span className={`status-badge ${isListening ? 'status-live' : 'status-idle'}`}>
@@ -369,7 +367,7 @@ function App() {
 
           <div className="topbar-meta">
             <p className="privacy-note">
-              Audio is analyzed locally on your device. No uploads, telemetry, or raw audio storage.
+              Local-only analysis. No uploads, telemetry, or raw audio storage.
             </p>
 
             <p className="status-message">{statusMessage}</p>

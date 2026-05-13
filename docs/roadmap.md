@@ -15,6 +15,7 @@ V1
 - Investigation snapshots and comparison
 - Tauri desktop shell
 - Desktop UI pass
+- Desktop polish pass
 
 V2
 - Spectrogram
