@@ -42,6 +42,25 @@ import type {
   PersistenceState,
 } from './audio/types';
 
+const VIEW_TITLES: Record<AppView, { label: string; description: string }> = {
+  monitor: {
+    label: 'Monitor',
+    description: 'Live candidate, spectrum, and stability dashboard.',
+  },
+  analysis: {
+    label: 'Analysis',
+    description: 'Debug ranking for persistent low-frequency candidates.',
+  },
+  settings: {
+    label: 'Settings',
+    description: 'Live detector thresholds and presets.',
+  },
+  investigation: {
+    label: 'Investigation',
+    description: 'Capture and compare derived room-state snapshots.',
+  },
+};
+
 function App() {
   const [activeView, setActiveView] = useState<AppView>('monitor');
   const [isListening, setIsListening] = useState(false);
@@ -114,6 +133,7 @@ function App() {
 
   const stabilityState = deriveStabilityState(candidateHistory);
   const latestHistoryEntry = candidateHistory.at(-1) ?? null;
+  const activeViewMeta = VIEW_TITLES[activeView];
 
   const captureSnapshot = () => {
     const nextSnapshot = captureInvestigationSnapshot({
@@ -263,124 +283,164 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Local low-frequency monitor</p>
-            <h1>HumSniper</h1>
-            <p className="panel-intro">
-              A local listening instrument for tracking persistent low-frequency hum.
-            </p>
+      <section className="desktop-frame">
+        <header className="topbar">
+          <div className="topbar-row">
+            <div className="topbar-brand">
+              <div>
+                <p className="eyebrow">Privacy-first local audio investigation</p>
+                <h1>HumSniper</h1>
+              </div>
+              <p className="panel-intro">
+                A local listening instrument for tracking persistent low-frequency hum.
+              </p>
+            </div>
+
+            <div className="topbar-summary">
+              <div className="topbar-summary-card">
+                <span className="summary-label">Current view</span>
+                <strong>{activeViewMeta.label}</strong>
+                <span>{activeViewMeta.description}</span>
+              </div>
+
+              <div className="topbar-summary-card">
+                <span className="summary-label">Capture state</span>
+                <strong>{isListening ? 'Microphone active' : 'Microphone inactive'}</strong>
+                <span>{isListening ? 'Audio stays local in memory.' : 'Start listening to analyze.'}</span>
+              </div>
+
+              <span className={`status-badge ${isListening ? 'status-live' : 'status-idle'}`}>
+                {isListening ? 'Mic Active' : 'Mic Off'}
+              </span>
+            </div>
           </div>
-          <span className={`status-badge ${isListening ? 'status-live' : 'status-idle'}`}>
-            {isListening ? 'Mic Active' : 'Mic Off'}
-          </span>
-        </div>
 
-        <p className="privacy-note">
-          Audio is analyzed locally on your device and is not uploaded.
-        </p>
+          <div className="topbar-row topbar-row-controls">
+            <nav className="view-tabs" aria-label="HumSniper sections">
+              <button
+                type="button"
+                className={`view-tab ${activeView === 'monitor' ? 'view-tab-active' : ''}`}
+                onClick={() => setActiveView('monitor')}
+              >
+                Monitor
+              </button>
+              <button
+                type="button"
+                className={`view-tab ${activeView === 'analysis' ? 'view-tab-active' : ''}`}
+                onClick={() => setActiveView('analysis')}
+              >
+                Analysis
+              </button>
+              <button
+                type="button"
+                className={`view-tab ${activeView === 'settings' ? 'view-tab-active' : ''}`}
+                onClick={() => setActiveView('settings')}
+              >
+                Settings
+              </button>
+              <button
+                type="button"
+                className={`view-tab ${activeView === 'investigation' ? 'view-tab-active' : ''}`}
+                onClick={() => setActiveView('investigation')}
+              >
+                Investigation
+              </button>
+            </nav>
 
-        <p className="status-message">{statusMessage}</p>
+            <div className="button-row topbar-actions">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => void startListening()}
+                disabled={isListening}
+              >
+                Start Listening
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void stopListening()}
+                disabled={!isListening && audioRef.current === null}
+              >
+                Stop Listening
+              </button>
+            </div>
+          </div>
 
-        {errorMessage ? (
-          <p className="error-message" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
+          <div className="topbar-meta">
+            <p className="privacy-note">
+              Audio is analyzed locally on your device. No uploads, telemetry, or raw audio storage.
+            </p>
 
-        <nav className="view-tabs" aria-label="HumSniper sections">
-          <button
-            type="button"
-            className={`view-tab ${activeView === 'monitor' ? 'view-tab-active' : ''}`}
-            onClick={() => setActiveView('monitor')}
-          >
-            Monitor
-          </button>
-          <button
-            type="button"
-            className={`view-tab ${activeView === 'analysis' ? 'view-tab-active' : ''}`}
-            onClick={() => setActiveView('analysis')}
-          >
-            Analysis
-          </button>
-          <button
-            type="button"
-            className={`view-tab ${activeView === 'settings' ? 'view-tab-active' : ''}`}
-            onClick={() => setActiveView('settings')}
-          >
-            Settings
-          </button>
-          <button
-            type="button"
-            className={`view-tab ${activeView === 'investigation' ? 'view-tab-active' : ''}`}
-            onClick={() => setActiveView('investigation')}
-          >
-            Investigation
-          </button>
-        </nav>
+            <p className="status-message">{statusMessage}</p>
+          </div>
 
-        {activeView === 'monitor' ? (
-          <MonitorView
-            isListening={isListening}
-            canStop={isListening || audioRef.current !== null}
-            onStartListening={() => void startListening()}
-            onStopListening={() => void stopListening()}
-            humCandidate={humCandidate}
-            mainsBands={mainsBands}
-            humFamilies={humFamilies}
-            stabilityState={stabilityState}
-            candidateHistory={candidateHistory}
-            latestHistoryEntry={latestHistoryEntry}
-            bars={bars}
-            peaks={peaks}
-          />
-        ) : null}
+          {errorMessage ? (
+            <p className="error-message" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+        </header>
 
-        {activeView === 'analysis' ? (
-          <AnalysisView
-            rumbleCutoffHz={settings.rumbleCutoffHz}
-            persistentCandidates={persistentCandidates}
-          />
-        ) : null}
+        <section className="panel">
+          {activeView === 'monitor' ? (
+            <MonitorView
+              humCandidate={humCandidate}
+              mainsBands={mainsBands}
+              humFamilies={humFamilies}
+              stabilityState={stabilityState}
+              candidateHistory={candidateHistory}
+              latestHistoryEntry={latestHistoryEntry}
+              bars={bars}
+              peaks={peaks}
+            />
+          ) : null}
 
-        {activeView === 'settings' ? (
-          <SettingsView
-            settings={settings}
-            onApplyPreset={applyPreset}
-            onRumbleCutoffChange={(value) =>
-              setSettings((current) => ({
-                ...current,
-                rumbleCutoffHz: value,
-              }))
-            }
-            onMinimumPersistenceChange={(value) =>
-              setSettings((current) => ({
-                ...current,
-                minimumPersistencePercent: value,
-              }))
-            }
-            onMinimumAverageStrengthChange={(value) =>
-              setSettings((current) => ({
-                ...current,
-                minimumAverageStrength: value,
-              }))
-            }
-          />
-        ) : null}
+          {activeView === 'analysis' ? (
+            <AnalysisView
+              rumbleCutoffHz={settings.rumbleCutoffHz}
+              persistentCandidates={persistentCandidates}
+            />
+          ) : null}
 
-        {activeView === 'investigation' ? (
-          <InvestigationView
-            isListening={isListening}
-            snapshots={snapshots}
-            selectedSnapshotAId={selectedSnapshotAId}
-            selectedSnapshotBId={selectedSnapshotBId}
-            onCaptureSnapshot={captureSnapshot}
-            onLabelChange={updateSnapshotLabel}
-            onSelectSnapshotA={setSelectedSnapshotAId}
-            onSelectSnapshotB={setSelectedSnapshotBId}
-          />
-        ) : null}
+          {activeView === 'settings' ? (
+            <SettingsView
+              settings={settings}
+              onApplyPreset={applyPreset}
+              onRumbleCutoffChange={(value) =>
+                setSettings((current) => ({
+                  ...current,
+                  rumbleCutoffHz: value,
+                }))
+              }
+              onMinimumPersistenceChange={(value) =>
+                setSettings((current) => ({
+                  ...current,
+                  minimumPersistencePercent: value,
+                }))
+              }
+              onMinimumAverageStrengthChange={(value) =>
+                setSettings((current) => ({
+                  ...current,
+                  minimumAverageStrength: value,
+                }))
+              }
+            />
+          ) : null}
+
+          {activeView === 'investigation' ? (
+            <InvestigationView
+              isListening={isListening}
+              snapshots={snapshots}
+              selectedSnapshotAId={selectedSnapshotAId}
+              selectedSnapshotBId={selectedSnapshotBId}
+              onCaptureSnapshot={captureSnapshot}
+              onLabelChange={updateSnapshotLabel}
+              onSelectSnapshotA={setSelectedSnapshotAId}
+              onSelectSnapshotB={setSelectedSnapshotBId}
+            />
+          ) : null}
+        </section>
       </section>
     </main>
   );

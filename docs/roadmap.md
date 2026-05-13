@@ -14,6 +14,7 @@ V1
 - Presentational view extraction
 - Investigation snapshots and comparison
 - Tauri desktop shell
+- Desktop UI pass
 
 V2
 - Spectrogram

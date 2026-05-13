@@ -219,6 +219,45 @@ Next goals:
 
 ### Slice 011 Complete
 
+Added a minimal Tauri v2 desktop shell so HumSniper can run as a native desktop window while preserving the existing local-only frontend behavior.
+
+Features:
+- Tauri v2 shell
+- desktop dev and build scripts
+- minimal desktop capability setup
+- desktop icon asset generation and wiring
+
+Key observations:
+- the app remains mostly browser-driven, which keeps the desktop wrapper simple
+- local-only audio analysis translates cleanly into a desktop container
+- desktop workflow still depends on the host machine having the right Rust and WebView tooling
+
+Next goals:
+- make the interface feel more like a dense desktop instrument than a centered web page
+- use horizontal space more effectively in the Monitor view
+- keep verifying microphone release behavior in both browser and desktop modes
+
+### Slice 012 Complete
+
+Reworked the app shell and dashboard layout so HumSniper reads more like a desktop investigation instrument and less like a single narrow web page.
+
+Features:
+- compact desktop-style top control and status bar
+- denser shell spacing and wider content surface
+- monitor dashboard with faster primary candidate visibility
+- integrated live spectrum panel with nearby peak context
+- more consistent panel hierarchy across Monitor, Analysis, Settings, and Investigation
+
+Key observations:
+- moving controls and status into a persistent top bar makes navigation and microphone state easier to scan
+- the Monitor view benefits from a two-column desktop layout more than from additional UI chrome
+- keeping the pass presentation-only made it straightforward to preserve audio and detection behavior
+
+Next goals:
+- add richer frequency history without turning the monitor into a diagnostics wall
+- improve desktop-specific setup diagnostics for missing Rust or WebView prerequisites
+- refine investigation comparison language with more real room-state examples
+
 Wrapped the existing Vite app in a minimal Tauri v2 desktop shell without changing the frontend analysis workflow.
 
 Features:

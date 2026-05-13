@@ -8,10 +8,6 @@ import type {
 } from '../audio/types';
 
 type MonitorViewProps = {
-  isListening: boolean;
-  canStop: boolean;
-  onStartListening: () => void;
-  onStopListening: () => void;
   humCandidate: HumCandidate;
   mainsBands: MainsBandReading[];
   humFamilies: HumFamily[];
@@ -23,10 +19,6 @@ type MonitorViewProps = {
 };
 
 function MonitorView({
-  isListening,
-  canStop,
-  onStartListening,
-  onStopListening,
   humCandidate,
   mainsBands,
   humFamilies,
@@ -36,46 +28,19 @@ function MonitorView({
   bars,
   peaks,
 }: MonitorViewProps) {
+  const primaryFamily = humFamilies[0] ?? null;
+
   return (
-    <div className="view-stack">
-      <section className="monitor-hero">
-        <div className="monitor-copy">
-          <h2>Live Monitor</h2>
-          <p className="monitor-note">
-            Start listening to watch the strongest persistent low-frequency candidate update in
-            real time.
-          </p>
-        </div>
-
-        <div className="button-row">
-          <button
-            type="button"
-            className="primary-button"
-            onClick={onStartListening}
-            disabled={isListening}
-          >
-            Start Listening
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={onStopListening}
-            disabled={!canStop}
-          >
-            Stop Listening
-          </button>
-        </div>
-      </section>
-
-      <section className="candidate-panel">
+    <div className="view-stack monitor-dashboard">
+      <section className="candidate-panel monitor-primary-panel">
         <div className="section-heading">
-          <h2>Hum Candidate</h2>
-          <span>Rolling 3.8 second view</span>
+          <h2>Monitor Dashboard</h2>
+          <span>Rolling 3.8 second detection view</span>
         </div>
 
         <div className="candidate-grid">
           <div className="candidate-card candidate-card-primary">
-            <span className="candidate-label">Strongest persistent frequency</span>
+            <span className="candidate-label">Primary candidate</span>
             <strong>
               {humCandidate.frequencyHz !== null
                 ? `${humCandidate.frequencyHz.toFixed(1)} Hz`
@@ -84,13 +49,18 @@ function MonitorView({
           </div>
 
           <div className="candidate-card">
-            <span className="candidate-label">Approximate confidence</span>
+            <span className="candidate-label">Confidence</span>
             <strong>{humCandidate.confidencePercent}%</strong>
           </div>
 
           <div className="candidate-card">
             <span className="candidate-label">Status</span>
             <strong>{humCandidate.status}</strong>
+          </div>
+
+          <div className="candidate-card">
+            <span className="candidate-label">Primary family hint</span>
+            <strong>{primaryFamily ? primaryFamily.label : 'No active family'}</strong>
           </div>
         </div>
 
@@ -113,40 +83,54 @@ function MonitorView({
         </div>
       </section>
 
-      <section className="family-panel">
+      <section className="visualizer-panel monitor-spectrum-panel">
         <div className="section-heading">
-          <h2>Hum Families</h2>
-          <span>Grouped harmonic patterns under 300 Hz</span>
+          <h2>Integrated Spectrum</h2>
+          <span>Smoothed low-frequency view under 300 Hz</span>
         </div>
 
-        <p className="family-note">
-          Matched bands are possible family hints only. A recurring source can create energy at
-          multiples of a base frequency, which is why 50 Hz or 60 Hz patterns often show up in
-          related bands.
-        </p>
+        <section className="visualizer" aria-label="Low frequency visualization">
+          {bars.map((magnitude, index) => (
+            <div key={index} className="bar-slot">
+              <div
+                className="bar-fill"
+                style={{ height: `${Math.max(6, (magnitude / 255) * 100)}%` }}
+              />
+            </div>
+          ))}
+        </section>
 
-        {humFamilies.length > 0 ? (
-          <ul className="family-list">
-            {humFamilies.map((family) => (
-              <li key={family.baseFrequencyHz} className="family-item">
-                <div>
-                  <strong>{family.label}</strong>
-                  <p className="family-explanation">{family.explanation}</p>
-                </div>
-                <span>matched bands {family.matchedBandsHz.join(', ')} Hz</span>
-                <span>combined score {family.combinedScore}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="empty-state">No clear 50 Hz or 60 Hz family matches are visible right now.</p>
-        )}
+        <div className="spectrum-summary-grid">
+          <div className="spectrum-summary-card">
+            <span className="candidate-label">Top peaks</span>
+            {peaks.length > 0 ? (
+              <ul className="peak-list peak-list-compact">
+                {peaks.map((peak) => (
+                  <li key={`${peak.frequencyHz}-${peak.magnitude}`} className="peak-item">
+                    <span>{peak.frequencyHz.toFixed(1)} Hz</span>
+                    <span>{Math.round(peak.magnitude)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-state">No low-frequency peaks detected yet.</p>
+            )}
+          </div>
+
+          <div className="spectrum-summary-card">
+            <span className="candidate-label">What to watch</span>
+            <p className="family-note">
+              A persistent hum usually looks steadier than room rumble. Repeating 50 Hz or 60 Hz
+              patterns often indicate related harmonics rather than isolated peaks.
+            </p>
+          </div>
+        </div>
       </section>
 
       <section className="history-panel">
         <div className="section-heading">
-          <h2>Stability</h2>
-          <span>Recent candidate history</span>
+          <h2>Stability History</h2>
+          <span>Recent candidate changes</span>
         </div>
 
         <div className="history-summary">
@@ -202,41 +186,33 @@ function MonitorView({
         )}
       </section>
 
-      <section className="visualizer-panel">
+      <section className="family-panel">
         <div className="section-heading">
-          <h2>Live Spectrum</h2>
-          <span>Smoothed low-frequency view under 300 Hz</span>
+          <h2>Hum Families</h2>
+          <span>Grouped harmonic patterns under 300 Hz</span>
         </div>
 
-        <section className="visualizer" aria-label="Low frequency visualization">
-          {bars.map((magnitude, index) => (
-            <div key={index} className="bar-slot">
-              <div
-                className="bar-fill"
-                style={{ height: `${Math.max(6, (magnitude / 255) * 100)}%` }}
-              />
-            </div>
-          ))}
-        </section>
-      </section>
+        <p className="family-note">
+          Matched bands are possible family hints only. A recurring source can create energy at
+          multiples of a base frequency, which is why 50 Hz or 60 Hz patterns often show up in
+          related bands.
+        </p>
 
-      <section className="peaks-panel">
-        <div className="section-heading">
-          <h2>Top 5 Peaks Under 300 Hz</h2>
-          <span>Smoothed live FFT snapshot</span>
-        </div>
-
-        {peaks.length > 0 ? (
-          <ul className="peak-list">
-            {peaks.map((peak) => (
-              <li key={`${peak.frequencyHz}-${peak.magnitude}`} className="peak-item">
-                <span>{peak.frequencyHz.toFixed(1)} Hz</span>
-                <span>{Math.round(peak.magnitude)}</span>
+        {humFamilies.length > 0 ? (
+          <ul className="family-list">
+            {humFamilies.map((family) => (
+              <li key={family.baseFrequencyHz} className="family-item">
+                <div>
+                  <strong>{family.label}</strong>
+                  <p className="family-explanation">{family.explanation}</p>
+                </div>
+                <span>matched bands {family.matchedBandsHz.join(', ')} Hz</span>
+                <span>combined score {family.combinedScore}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="empty-state">No low-frequency peaks detected yet.</p>
+          <p className="empty-state">No clear 50 Hz or 60 Hz family matches are visible right now.</p>
         )}
       </section>
     </div>
