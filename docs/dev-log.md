@@ -216,3 +216,26 @@ Next goals:
 - refine snapshot comparison language with more real room-state examples
 - consider session export of derived summaries only if it remains strictly local
 - continue breaking `App.tsx` into smaller orchestration helpers without changing detector behavior
+
+### Slice 011 Complete
+
+Wrapped the existing Vite app in a minimal Tauri v2 desktop shell without changing the frontend analysis workflow.
+
+Features:
+- `src-tauri` desktop shell added
+- Vite dev server wired into Tauri desktop development
+- built `dist/` output wired into desktop packaging
+- minimal Tauri capability limited to `core:default`
+- desktop window defaults for title, size, and resize behavior
+- new desktop dev/build npm scripts
+- README and slice docs updated for Windows + WSL + MSVC workflow
+
+Key observations:
+- Tauri fits the existing local-only architecture cleanly because the frontend can remain unchanged
+- keeping capabilities minimal avoids widening the local security surface unnecessarily
+- Windows desktop development needs explicit documentation when the repo lives in WSL because MSVC and Rust still execute on the Windows side
+
+Next goals:
+- verify desktop microphone behavior across more Windows machines and WebView2 versions
+- decide whether derived snapshot export/import should land before any heavier desktop-specific polish
+- keep the desktop shell thin so the browser and desktop paths stay behavior-aligned

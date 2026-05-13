@@ -13,12 +13,14 @@ V1
 - App architecture refactor
 - Presentational view extraction
 - Investigation snapshots and comparison
+- Tauri desktop shell
 
 V2
 - Spectrogram
 - Frequency history
 - Sensitivity controls
 - Local-only derived snapshot export/import
+- Desktop permission/help diagnostics
 
 V3
 - Source estimation

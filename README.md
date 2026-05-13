@@ -21,7 +21,7 @@ It is designed for questions like:
 - Is a laptop fan introducing a new 120 Hz or 240 Hz pattern?
 - Does a frequency stay stable over time, or drift around?
 
-The app focuses on derived analysis and comparison, not recording. All analysis currently happens locally on-device in the browser.
+The app focuses on derived analysis and comparison, not recording. All analysis happens locally on-device in the browser runtime used by either the web app or the desktop shell.
 
 ## Why It Exists
 
@@ -40,7 +40,8 @@ It is intentionally narrow in scope. The goal is to help make invisible room-sta
 - Investigation snapshots for different room states
 - Two-snapshot comparison using derived analysis summaries
 - Detection tuning controls with presets and sliders
-- Local-only processing in the browser
+- Local-only processing in the browser runtime
+- Lightweight Tauri desktop shell for standalone desktop use
 - No raw audio storage
 - No telemetry, tracking, or network uploads
 
@@ -54,6 +55,7 @@ HumSniper is built around a strict local-first boundary.
 - HumSniper does not store raw FFT frames.
 - Investigation snapshots store only lightweight derived frequency-analysis summaries.
 - There is no backend, no auth, and no telemetry in the current app.
+- The desktop shell adds no backend API layer and no new audio storage behavior.
 
 For the current snapshot workflow, captured states live only in memory for the active session and clear on page refresh.
 
@@ -106,6 +108,7 @@ It is best treated as a local exploratory instrument for noticing patterns and c
 - React
 - TypeScript
 - Web Audio API
+- Tauri v2 desktop shell
 
 ## Getting Started
 
@@ -113,9 +116,9 @@ It is best treated as a local exploratory instrument for noticing patterns and c
 
 - Node.js
 - npm
-- A browser with microphone access
+- A browser with microphone access for web development
 
-### Local Development
+### Browser Development
 
 ```bash
 npm install
@@ -124,17 +127,88 @@ npm run dev
 
 Then open the local Vite URL in your browser and allow microphone access when prompted.
 
-### Production Build
+### Browser Production Build
 
 ```bash
 npm run build
 ```
 
-### Preview Production Build
+### Preview Browser Production Build
 
 ```bash
 npm run preview
 ```
+
+## Desktop Shell
+
+HumSniper now includes a minimal Tauri v2 desktop shell in [`src-tauri`](./src-tauri).
+
+The shell wraps the existing Vite app. It does not rewrite the frontend, does not add backend APIs, and does not add telemetry, uploads, or raw audio storage.
+
+### Desktop Prerequisites
+
+- Node.js and npm
+- Rust toolchain installed on Windows
+- Microsoft Visual C++ Build Tools installed on Windows
+- WebView2 runtime on Windows
+
+### Windows + WSL Development Note
+
+This repository may live inside WSL, but Windows-native Tauri builds still rely on the Windows Rust/MSVC toolchain.
+
+Do not assume `npm run desktop:dev` or `npm run desktop:build` will work fully inside WSL alone. Run the desktop commands from a Windows Command Prompt or PowerShell session after loading the MSVC environment.
+
+### Load the MSVC Environment
+
+In Windows Command Prompt:
+
+```bat
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+```
+
+In PowerShell:
+
+```powershell
+cmd /c "call \"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat\" && powershell"
+```
+
+After the MSVC environment is loaded, change into the repository from Windows using its UNC path or a mapped drive that points at the WSL workspace.
+
+Example:
+
+```powershell
+cd \\wsl$\Ubuntu\home\gpennington\hum-sniper
+```
+
+### Desktop Development
+
+From a Windows terminal with the MSVC environment loaded:
+
+```bash
+npm install
+npm run desktop:dev
+```
+
+This starts the Vite dev server and launches the Tauri desktop window against `http://localhost:5173`.
+
+### Desktop Build
+
+From a Windows terminal with the MSVC environment loaded:
+
+```bash
+npm install
+npm run desktop:build
+```
+
+This builds the web frontend into `dist/` and then packages the Tauri desktop application from `src-tauri/`.
+
+### Microphone Permissions
+
+HumSniper still uses the browser audio APIs inside the desktop WebView.
+
+- The first run may trigger an OS-level or WebView microphone permission prompt.
+- Microphone behavior can vary slightly by platform and WebView runtime.
+- No raw microphone audio is stored by HumSniper in either browser or desktop mode.
 
 ## Project Structure Overview
 
@@ -155,6 +229,11 @@ src/
     AnalysisView.tsx         Persistent candidate inspection view
     SettingsView.tsx         Detection tuning controls
     InvestigationView.tsx    Snapshot capture and comparison workflow
+src-tauri/
+  src/main.rs                Desktop entry point
+  src/lib.rs                 Minimal Tauri app builder
+  capabilities/default.json  Minimal core capability for the main window
+  tauri.conf.json            Desktop shell config and Vite integration
 docs/
   vision.md                  Project direction
   roadmap.md                 High-level roadmap
@@ -173,7 +252,7 @@ Near-term directions that fit the current project shape:
 
 Longer-term ideas:
 
-- Tauri desktop app
+- Stronger desktop polish on top of the current Tauri shell
 - Raspberry Pi experimentation
 - Multi-microphone or multi-position comparisons
 - Directional or source-estimation experiments
