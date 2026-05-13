@@ -177,7 +177,7 @@ After the MSVC environment is loaded, change into the repository from Windows us
 Example:
 
 ```powershell
-cd \\wsl$\Ubuntu\home\gpennington\hum-sniper
+cd \\wsl$\Ubuntu\home\foo\hum-sniper
 ```
 
 ### Desktop Development
