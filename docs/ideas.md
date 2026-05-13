@@ -53,3 +53,9 @@ Stop tone
 volume slider very low by default
 
 That would be a genuinely cool feature. It makes HumSniper more intuitive because the user can both see and hear what the app detected.
+
+Investigation workflow ideas:
+
+- Compare baseline vs AC on to see which persistent bands appear only with HVAC load
+- Compare laptop idle vs heavy compile or fan spin-up to see whether 120Hz or 240Hz family hints get stronger
+- Compare lights on/off, charger connected/disconnected, or monitor brightness states as named checkpoints

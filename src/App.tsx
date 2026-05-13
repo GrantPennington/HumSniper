@@ -23,7 +23,9 @@ import {
   deriveStabilityState,
   samplePersistenceFrame,
 } from './audio/persistence';
+import { captureInvestigationSnapshot } from './audio/snapshots';
 import AnalysisView from './components/AnalysisView';
+import InvestigationView from './components/InvestigationView';
 import MonitorView from './components/MonitorView';
 import SettingsView from './components/SettingsView';
 import type {
@@ -34,6 +36,7 @@ import type {
   FrequencyPeak,
   HumCandidate,
   HumFamily,
+  InvestigationSnapshot,
   MainsBandReading,
   PersistentCandidate,
   PersistenceState,
@@ -54,6 +57,9 @@ function App() {
   const [candidateHistory, setCandidateHistory] = useState<CandidateHistoryEntry[]>([]);
   const [settings, setSettings] = useState<DetectionSettings>(DETECTION_PRESETS.Balanced);
   const [mainsBands, setMainsBands] = useState<MainsBandReading[]>(createEmptyMainsBandReadings);
+  const [snapshots, setSnapshots] = useState<InvestigationSnapshot[]>([]);
+  const [selectedSnapshotAId, setSelectedSnapshotAId] = useState('');
+  const [selectedSnapshotBId, setSelectedSnapshotBId] = useState('');
   const audioRef = useRef<AudioResources | null>(null);
   const persistenceRef = useRef<PersistenceState | null>(null);
   const settingsRef = useRef<DetectionSettings>(DETECTION_PRESETS.Balanced);
@@ -108,6 +114,34 @@ function App() {
 
   const stabilityState = deriveStabilityState(candidateHistory);
   const latestHistoryEntry = candidateHistory.at(-1) ?? null;
+
+  const captureSnapshot = () => {
+    const nextSnapshot = captureInvestigationSnapshot({
+      humCandidate,
+      persistentCandidates,
+      families: humFamilies,
+      stabilityState,
+      settings,
+    });
+
+    setSnapshots((current) => {
+      const nextSnapshots = [nextSnapshot, ...current];
+
+      if (selectedSnapshotAId === '') {
+        setSelectedSnapshotAId(nextSnapshot.id);
+      } else if (selectedSnapshotBId === '' && selectedSnapshotAId !== nextSnapshot.id) {
+        setSelectedSnapshotBId(nextSnapshot.id);
+      }
+
+      return nextSnapshots;
+    });
+  };
+
+  const updateSnapshotLabel = (snapshotId: string, label: string) => {
+    setSnapshots((current) =>
+      current.map((snapshot) => (snapshot.id === snapshotId ? { ...snapshot, label } : snapshot)),
+    );
+  };
 
   const startListening = async () => {
     if (isListening) {
@@ -277,6 +311,13 @@ function App() {
           >
             Settings
           </button>
+          <button
+            type="button"
+            className={`view-tab ${activeView === 'investigation' ? 'view-tab-active' : ''}`}
+            onClick={() => setActiveView('investigation')}
+          >
+            Investigation
+          </button>
         </nav>
 
         {activeView === 'monitor' ? (
@@ -325,6 +366,19 @@ function App() {
                 minimumAverageStrength: value,
               }))
             }
+          />
+        ) : null}
+
+        {activeView === 'investigation' ? (
+          <InvestigationView
+            isListening={isListening}
+            snapshots={snapshots}
+            selectedSnapshotAId={selectedSnapshotAId}
+            selectedSnapshotBId={selectedSnapshotBId}
+            onCaptureSnapshot={captureSnapshot}
+            onLabelChange={updateSnapshotLabel}
+            onSelectSnapshotA={setSelectedSnapshotAId}
+            onSelectSnapshotB={setSelectedSnapshotBId}
           />
         ) : null}
       </section>

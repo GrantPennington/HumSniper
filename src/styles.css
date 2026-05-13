@@ -260,6 +260,131 @@ h2 {
   color: #94a3b8;
 }
 
+.investigation-panel {
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(12, 19, 31, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.investigation-note {
+  color: #94a3b8;
+}
+
+.investigation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.capture-status {
+  color: #bfd3ea;
+}
+
+.capture-status-live {
+  color: #d1fae5;
+}
+
+.privacy-note-compact {
+  margin-top: 14px;
+}
+
+.snapshot-list,
+.comparison-list {
+  list-style: none;
+  padding: 0;
+}
+
+.snapshot-list {
+  display: grid;
+  gap: 12px;
+}
+
+.snapshot-item {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(30, 41, 59, 0.68);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.snapshot-item-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.snapshot-label-input,
+.comparison-picker-grid select {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #f8fafc;
+}
+
+.snapshot-label-input {
+  max-width: 22rem;
+}
+
+.snapshot-time {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.snapshot-summary-grid,
+.comparison-grid,
+.comparison-picker-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.snapshot-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.snapshot-summary-card,
+.comparison-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.74);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  color: #dbeafe;
+}
+
+.snapshot-summary-card strong,
+.comparison-card strong {
+  display: block;
+  margin-top: 8px;
+  color: #f8fafc;
+}
+
+.comparison-picker-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.comparison-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.comparison-card-wide {
+  grid-column: 1 / -1;
+}
+
+.comparison-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  color: #cbd5e1;
+}
+
 .primary-button,
 .secondary-button {
   border: 0;
@@ -646,5 +771,24 @@ h2 {
   .history-summary {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .snapshot-item-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .snapshot-label-input {
+    max-width: none;
+  }
+
+  .snapshot-summary-grid,
+  .comparison-picker-grid,
+  .comparison-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .snapshot-time {
+    text-align: left;
   }
 }

@@ -12,11 +12,13 @@ V1
 - Candidate history strip
 - App architecture refactor
 - Presentational view extraction
+- Investigation snapshots and comparison
 
 V2
 - Spectrogram
 - Frequency history
 - Sensitivity controls
+- Local-only derived snapshot export/import
 
 V3
 - Source estimation

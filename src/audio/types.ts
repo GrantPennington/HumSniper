@@ -50,7 +50,48 @@ export type DetectionSettings = {
   minimumAverageStrength: number;
 };
 
-export type AppView = 'monitor' | 'analysis' | 'settings';
+export type SnapshotCandidate = {
+  frequencyHz: number;
+  averageStrength: number;
+  confidencePercent: number;
+  nearestMainsBandHz: number | null;
+  excludedByRumbleFilter: boolean;
+};
+
+export type SnapshotFamilySummary = {
+  baseFrequencyHz: 50 | 60;
+  label: string;
+  matchedBandsHz: number[];
+  combinedScore: number;
+};
+
+export type InvestigationSnapshot = {
+  id: string;
+  timestamp: number;
+  label: string;
+  mainCandidate: HumCandidate;
+  persistentCandidates: SnapshotCandidate[];
+  families: SnapshotFamilySummary[];
+  stabilityState: StabilityState;
+  settings: DetectionSettings;
+};
+
+export type SnapshotFrequencyChange = {
+  frequencyHz: number;
+  direction: 'stronger' | 'weaker' | 'possibly changed';
+  beforeConfidencePercent: number;
+  afterConfidencePercent: number;
+};
+
+export type SnapshotComparison = {
+  appearedFrequenciesHz: number[];
+  disappearedFrequenciesHz: number[];
+  confidenceChanges: SnapshotFrequencyChange[];
+  familyChangeSummary: string;
+  mainCandidateChangeSummary: string;
+};
+
+export type AppView = 'monitor' | 'analysis' | 'settings' | 'investigation';
 
 export type PersistenceState = {
   smoothedBins: number[];

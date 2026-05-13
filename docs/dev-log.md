@@ -194,3 +194,25 @@ Next goals:
 - extract repeated panel sections into smaller leaf components where useful
 - keep `App.tsx` focused on orchestration only
 - continue verifying that refactors do not change the live detector behavior
+
+### Slice 010 Complete
+
+Added an investigation snapshot workflow for comparing derived hum analysis across room states like baseline, AC on, or laptop fan load.
+
+Features:
+- Investigation tab
+- in-memory snapshot capture
+- editable snapshot labels
+- stored main candidate, top persistent candidates, family summaries, stability, and settings
+- lightweight two-snapshot comparison
+- explicit privacy note explaining that raw audio is not stored
+
+Key observations:
+- comparing room states is much easier when derived analysis can be frozen into named checkpoints
+- approximate language matters because the detector is comparing summarized candidates, not full spectra
+- keeping snapshots session-only preserves the privacy-first shape of the app while validating the workflow
+
+Next goals:
+- refine snapshot comparison language with more real room-state examples
+- consider session export of derived summaries only if it remains strictly local
+- continue breaking `App.tsx` into smaller orchestration helpers without changing detector behavior

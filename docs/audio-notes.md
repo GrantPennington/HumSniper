@@ -8,3 +8,5 @@
 - 50Hz to 60Hz bands remain more convincing hum candidates when rumble cutoff is raised
 - Frequencies near 150Hz, 180Hz, and 240Hz may be harmonics related to 50Hz or 60Hz hum families
 - Short history makes persistent hum patterns easier to separate from drifting or intermittent detections
+- Comparing baseline vs AC on or laptop idle vs load should focus on derived persistent bands and family summaries rather than raw FFT frames
+- Session-only snapshots are enough to learn whether a frequency appeared, dropped, or got stronger under a changed room state
